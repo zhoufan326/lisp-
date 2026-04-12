@@ -1,0 +1,30 @@
+# 虚拟环境
+.venv/
+
+# IDE 相关
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 操作系统文件
+Thumbs.db
+.DS_Store
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 编译产物
+*.pyc
+__pycache__/
+
+# AutoCAD 相关
+*.bak
+*.dwl
+*.dwl2
+*.ac$
