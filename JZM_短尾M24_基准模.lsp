@@ -1,4 +1,5 @@
-(defun c:JZM1 ()
+(defun c:JZM1 (r0 a0 t0 scale_str tech_choice custom_tech_text slot_choice /
+               old_osmode old_cmdecho old_orthomode old_clayer old_attdia product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
   ;; 保存原始系统变量
@@ -48,104 +49,19 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (princ "\n=== 短尾M24凹工装绘图程序 ===")
-  (princ "\n请输入曲率半径: ")
-  (setq r0 (getdist))
-  (if (null r0)
+  (if (or (null r0) (null a0) (null t0))
     (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入口径(直径): ")
-  (setq a0 (getdist))
-  (if (null a0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  ;; 询问比例
-  (princ "\n请输入比例 (例如: 1:1, 1:2, 2:1): ")
-  (setq scale_str (getstring))
-  (if (null scale_str)
-    (progn
-      (princ "\n输入被取消或无效，使用默认比例1:1。")
-      (setq scale_str "1:1")
-    )
-  )
-  
-  (princ "\n请输入边厚: ")
-  (setq t0 (getdist))
-  (if (null t0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  ;; 询问技术要求选择
-  (princ "\n=== 技术要求选择 ===")
-  (princ "\n1: 使用默认技术要求")
-  (princ "\n2: 自定义技术要求")
-  (princ "\n请选择 (1-2): ")
-  (setq tech_choice (getint))
-  (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2))
-    (progn
-      (princ "\n输入无效，使用默认技术要求。")
-      (setq tech_choice 1)
-    )
-  )
-  
-  ;; 如果选择自定义技术要求，获取用户输入
-  (if (= tech_choice 2)
-    (progn
-      (princ "\n请输入自定义技术要求内容: ")
-      (setq custom_tech_text (getstring T))
-      (if (null custom_tech_text)
-        (progn
-          (princ "\n输入被取消，使用默认技术要求。")
-          (setq tech_choice 1)
-        )
-      )
-    )
-  )
-  
-  ;; 询问开槽选择
-  (princ "\n=== 开槽选择 ===")
-  (princ "\n0: 都不开槽")
-  (princ "\n1: 凹模开槽")
-  (princ "\n2: 凸模开槽")
-  (princ "\n3: 都开槽")
-  (princ "\n请选择开槽方式 (0-3): ")
-  (setq slot_choice (getint))
-  (if (or (null slot_choice) (< slot_choice 0) (> slot_choice 3))
-    (progn
-      (princ "\n输入被取消或无效，默认为都不开槽。")
-      (setq slot_choice 0)
+      (princ "\n=== 短尾M24基准模绘图程序 ===")
+      (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
+      (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
+      (if (or (null scale_str) (= scale_str "")) (setq scale_str (getstring "\n请输入比例 (例如: 1:1, 1:2, 2:1): ")))
+      (if (null scale_str) (setq scale_str "1:1"))
+      (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
+      (if (null tech_choice) (setq tech_choice (getint "\n请选择技术要求 (1:默认, 2:自定义): ")))
+      (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2)) (setq tech_choice 1))
+      (if (and (= tech_choice 2) (null custom_tech_text)) (setq custom_tech_text (getstring T "\n请输入自定义技术要求内容: ")))
+      (if (null slot_choice) (setq slot_choice (getint "\n请选择开槽方式 (0:都不开槽, 1:凹模, 2:凸模, 3:都开): ")))
+      (if (or (null slot_choice) (< slot_choice 0) (> slot_choice 3)) (setq slot_choice 0))
     )
   )
   

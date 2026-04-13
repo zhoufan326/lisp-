@@ -1,4 +1,5 @@
-(defun c:xza ()
+(defun c:xza (r0 a0 t0 tool_type /
+               old_osmode old_cmdecho old_orthomode old_clayer old_attdia old_dimtofl product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
   ;; 保存原始系统变量
@@ -37,10 +38,12 @@
   
   
   ;;=================工装类型选择===================
-  (princ "\n=== 小锥度凹工装绘图程序 ===")
-  
-  (initget 1 "1 2 3 4 5")
-  (setq tool_type (getkword "\n请选择工装类型: 1. 抛光模基模修盘 2. 抛光模修盘基模 3. 球面低抛细磨盘 4. 球面低抛粘盘 5. 球面低抛抛盘 "))
+  (if (null tool_type)
+    (progn
+      (initget 1 "1 2 3 4 5")
+      (setq tool_type (getkword "\n请选择工装类型: 1. 抛光模基模修盘 2. 抛光模修盘基模 3. 球面低抛细磨盘 4. 球面低抛粘盘 5. 球面低抛抛盘 "))
+    )
+  )
   
   ;; 根据工装类型设置参数
   (cond
@@ -79,52 +82,12 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (princ "\n=== 小锥度凹工装绘图程序 ===")
-  (princ "\n请输入曲率半径: ")
-  (setq r0 (getdist))
-  (if (null r0)
+  (if (or (null r0) (null a0) (null t0))
     (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入口径(直径): ")
-  (setq a0 (getdist))
-  (if (null a0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入边厚: ")
-  (setq t0 (getdist))
-  (if (null t0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
+      (princ "\n=== 小锥度凹工装绘图程序 ===")
+      (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
+      (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
+      (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
     )
   )
   

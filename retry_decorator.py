@@ -80,16 +80,18 @@ def retry_on_autocad_error(max_attempts=3, initial_delay=1):
         
         # 检查是否是"被呼叫方拒绝接收呼叫"错误
         if "被呼叫方拒绝接收呼叫" in error_msg or "-2147418111" in error_msg:
-            print(f"AutoCAD繁忙，第 {attempt} 次尝试失败")
-            print(f"等待 {delay} 秒后重试...")
+            pass  # 不打印繁忙信息，静默重试
+        elif "输入无效" in error_msg or "-2145386493" in error_msg:
+            pass  # 不打印输入无效信息，静默重试
+        elif "发生意外" in error_msg or "-2147352567" in error_msg:
+            pass  # 不打印意外错误信息，静默重试
         else:
-            print(f"操作第 {attempt} 次尝试失败: {error_msg}")
-            print(f"等待 {delay} 秒后重试...")
+            pass  # 其他错误也不打印，静默重试
     
     return retry_with_backoff(
         max_attempts=max_attempts,
         initial_delay=initial_delay,
-        backoff_factor=1,  # 每次增加1秒
+        backoff_factor=2,  # 每次增加2秒，给CAD更多时间恢复
         exceptions=Exception,  # 捕获所有异常
         on_retry=on_retry
     )

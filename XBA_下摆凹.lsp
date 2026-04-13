@@ -1,4 +1,5 @@
-(defun c:xba ()
+(defun c:xba (r0 a0 t0 b0 tool_type tech_choice custom_tech_text /
+               old_osmode old_cmdecho old_orthomode old_clayer old_attdia old_dimtofl product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
   ;; 保存原始系统变量
@@ -39,8 +40,12 @@
   ;;=================工装类型选择===================
   (princ "\n=== 下摆凹工装绘图程序 ===")
   
-  (initget 1 "1 2")
-  (setq tool_type (getkword "\n请选择工装类型: 1. 抛光模基模 2. 精磨模基模 "))
+  (if (null tool_type)
+    (progn
+      (initget 1 "1 2")
+      (setq tool_type (getkword "\n请选择工装类型: 1. 抛光模基模 2. 精磨模基模 "))
+    )
+  )
   
   ;; 根据工装类型设置参数
   (cond
@@ -64,68 +69,13 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (princ "\n=== 下摆凹工装绘图程序 ===")
-  (princ "\n请输入曲率半径: ")
-  (setq r0 (getdist))
-  (if (null r0)
+  (if (or (null r0) (null a0) (null t0) (null b0))
     (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入口径(直径): ")
-  (setq a0 (getdist))
-  (if (null a0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入边厚: ")
-  (setq t0 (getdist))
-  (if (null t0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
-    )
-  )
-  
-  (princ "\n请输入柄长: ")
-  (setq b0 (getdist))
-  (if (null b0)
-    (progn
-      (princ "\n输入被取消或无效，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (setvar "clayer" old_clayer)
-      (setvar "attdia" old_attdia)
-      (princ)
-      (exit)
+      (princ "\n=== 下摆凹工装绘图程序 ===")
+      (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
+      (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
+      (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
+      (if (null b0) (setq b0 (getdist "\n请输入柄长: ")))
     )
   )
   
@@ -160,31 +110,23 @@
   )
   
   ;; 询问技术要求选择
-  (princ "\n=== 技术要求选择 ===")
-  (princ "\n请选择1: 使用默认技术要求;2: 自定义技术要求:")
-  (setq tech_choice (getint))
-  (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2))
+  (if (null tech_choice)
     (progn
-      (princ "\n输入无效，使用默认技术要求。")
-      (setq tech_choice 1)
+      (princ "\n=== 技术要求选择 ===")
+      (princ "\n请选择1: 使用默认技术要求;2: 自定义技术要求:")
+      (setq tech_choice (getint))
     )
   )
+  (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2)) (setq tech_choice 1))
   
-  ;; 如果选择自定义技术要求，获取用户输入
-  (if (= tech_choice 2)
+  (if (and (= tech_choice 2) (null custom_tech_text))
     (progn
       (princ "\n请输入自定义技术要求内容: ")
       (setq custom_tech_text (getstring T))
-      (if (null custom_tech_text)
-        (progn
-          (princ "\n输入被取消，使用默认技术要求。")
-          (setq tech_choice 1)
-        )
-      )
     )
   )
   
-  ;; 自动生成完整图号（格式：前缀/Rr0-Φa0）
+  ;; 自动计算生成图号，格式为前缀/R-r0-口a0
   (setq drawing_no (strcat drawing_prefix "/R-" 
                            (rtos r0 2 4)     ; 曲率半径，最多显示四位小数
                            "-Φ" 
@@ -302,87 +244,91 @@
   ;; 切换到标注线图层
   (setvar "clayer" "标注线")
   
-  ;; 1. 标注l_pt1到r_pt1的水平距离（向上偏移7.5）
-  (setq dim_dy1 7.5)
-  (setq dim_pt1 (list 0 dim_dy1))
-  (command "dimlinear" l_pt1 r_pt1 "h" "t" "%%c<>" dim_pt1)
-
-  ;; 2. 标注l_pt3到r_pt3的水平距离（向上偏移 11.5）
-  (setq dim_dy2 11.5)
-  (setq dim_pt2 (list 0 dim_dy2))
-  (command "dimlinear" l_pt3 r_pt3 "h" "t" "%%c<>" dim_pt2)
-
-  ;; 3. 标注l_pt7到r_pt7的水平距离（从r_pt7和l_pt7的中点向上偏移1）
-  (setq dim_dy3 1)
-  (setq mid_pt37 (list (/ (+ (car l_pt7) (car r_pt7)) 2) (/ (+ (cadr l_pt7) (cadr r_pt7)) 2)))
-  (setq dim_pt3 (list (car mid_pt37) (+ (cadr mid_pt37) dim_dy3)))
-  (command "dimlinear" l_pt7 r_pt7 "h" "t" "%%c<>" dim_pt3)
+  ;; 1. 标注圆弧的半径（标注l_pt1到r_pt1的圆弧，位置在左侧四等分点处） 
+  ;; 关闭尺寸线强制 
+  (setq old_dimtofl (getvar "dimtofl")) 
+  (setvar "dimtofl" 0) 
   
-  ;; 4. 标注l_pt10到r_pt10的水平距离（从两点的中点向下偏移11.5）
-  (setq dim_dy4 (- 11.5))
-  (setq mid_pt410 (list (/ (+ (car l_pt10) (car r_pt10)) 2) (/ (+ (cadr l_pt10) (cadr r_pt10)) 2)))
-  (setq dim_pt4 (list (car mid_pt410) (+ (cadr mid_pt410) dim_dy4)))
-  (command "dimlinear" l_pt10 r_pt10 "h" "t" "%%c<>" dim_pt4)
+  (setq arc_center c_pt3)  ; 正确的圆心坐标 
+  
+  ;; 计算圆弧四等分点（凹面圆弧，利用圆心与端点、最低点的角度） 
+  (setq angL (angle arc_center l_pt1))                   ; 左端点相对圆心的角度 
+  (setq angR (angle arc_center r_pt1))                   ; 右端点相对圆心的角度 
+  (setq angB (angle arc_center c_pt1))                   ; 圆弧最低点相对圆心的角度 
+  ;; 左侧四等分点：位于左端点与最低点之间 
+  (setq left_quarter_angle (/ (+ angL angB) 2.0)) 
+  (setq left_quarter_pt (polar arc_center left_quarter_angle r0)) 
+  ;; 标注位置在左侧四等分点向右上方偏移0.5 
+  (setq dim_pt1 (list (+ (car left_quarter_pt) 0.5) (+ (cadr left_quarter_pt) 0.5))) 
+  (command "dimradius" left_quarter_pt dim_pt1) 
+  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择 
+  (while (> (getvar "CMDACTIVE") 0) 
+    (command pause) 
+  ) 
 
-  ;; 5. 标注r_pt2到r_pt5的垂直距离（向右偏移5.5）
-  (setq dim_pt5 (list (+ (car r_pt2) 5.5) (/ (+ (cadr r_pt2) (cadr r_pt5)) 2)))
-  (command "dimlinear" r_pt2 r_pt5 "v" dim_pt5)
+  ;; 2. 标注R3圆弧的半径（标注位置在右侧四等分点向左下方偏移0.5） 
+  ;; 计算R3圆弧的圆心（圆心在l_pt10和r_pt10的中点，半径为3） 
+  (setq r3_arc_center (list 0 (- (+ 5 t0 b0)))) 
+  ;; 计算R3圆弧四等分点（凹面圆弧，利用圆心与端点、最低点的角度） 
+  (setq angL_r3 (angle r3_arc_center l_pt10))              ; 左端点相对圆心的角度 
+  (setq angR_r3 (angle r3_arc_center r_pt10))              ; 右端点相对圆心的角度 
+  (setq angB_r3 (angle r3_arc_center c_pt2))              ; 圆弧最低点相对圆心的角度 
+  ;; 右侧四等分点：位于右端点与最低点之间 
+  (setq right_quarter_angle_r3 (/ (+ angR_r3 angB_r3) 2.0)) 
+  (setq right_quarter_pt (polar r3_arc_center right_quarter_angle_r3 3)) 
+  ;; 标注位置在右侧四等分点向左下方偏移0.5 
+  (setq dim_pt2 (list (- (car right_quarter_pt) 0.5) (- (cadr right_quarter_pt) 0.5))) 
+  (command "dimradius" right_quarter_pt dim_pt2) 
+  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择 
+  (while (> (getvar "CMDACTIVE") 0) 
+    (command pause) 
+  ) 
+    ;; 恢复尺寸线强制 
+  (setvar "dimtofl" old_dimtofl)
+
+  ;; 3. 标注l_pt1到r_pt1的水平距离（向上偏移7.5）
+  (setq dim_dy3 7.5)
+  (setq dim_pt3 (list 0 dim_dy3))
+  (command "dimlinear" l_pt1 r_pt1 "h" "t" "%%c<>" dim_pt3)
+
+  ;; 4. 标注l_pt3到r_pt3的水平距离（向上偏移 11.5）
+  (setq dim_dy4 11.5)
+  (setq dim_pt4 (list 0 dim_dy4))
+  (command "dimlinear" l_pt3 r_pt3 "h" "t" "%%c<>" dim_pt4)
+
+  ;; 5. 标注l_pt7到r_pt7的水平距离（从r_pt7和l_pt7的中点向上偏移1）
+  (setq dim_dy5 1)
+  (setq mid_pt57 (list (/ (+ (car l_pt7) (car r_pt7)) 2) (/ (+ (cadr l_pt7) (cadr r_pt7)) 2)))
+  (setq dim_pt5 (list (car mid_pt57) (+ (cadr mid_pt57) dim_dy5)))
+  (command "dimlinear" l_pt7 r_pt7 "h" "t" "%%c<>" dim_pt5)
   
-  ;; 6. 标注r_pt8到r_pt11的垂直距离（r_pt1向右偏移10.5）
-  (setq dim_pt6 (list (+ (car r_pt8) 10.5) (/ (+ (cadr r_pt8) (cadr r_pt11)) 2)))
-  (command "dimlinear" r_pt8 r_pt11 "v" dim_pt6)
+  ;; 6. 标注l_pt10到r_pt10的水平距离（从两点的中点向下偏移11.5）
+  (setq dim_dy6 (- 11.5))
+  (setq mid_pt610 (list (/ (+ (car l_pt10) (car r_pt10)) 2) (/ (+ (cadr l_pt10) (cadr r_pt10)) 2)))
+  (setq dim_pt6 (list (car mid_pt610) (+ (cadr mid_pt610) dim_dy6)))
+  (command "dimlinear" l_pt10 r_pt10 "h" "t" "%%c<>" dim_pt6)
+
+  ;; 7. 标注r_pt2到r_pt5的垂直距离（向右偏移5.5）
+  (setq dim_pt7 (list (+ (car r_pt2) 5.5) (/ (+ (cadr r_pt2) (cadr r_pt5)) 2)))
+  (command "dimlinear" r_pt2 r_pt5 "v" dim_pt7)
   
-  ;; 7. 标注r_pt2到r_pt11的垂直距离（判断dim_pt5和dim_pt6谁更偏右，再从该位置向右偏移5.5）（将尺寸保留两位小数）
+  ;; 8. 标注r_pt8到r_pt11的垂直距离（r_pt1向右偏移10.5）
+  (setq dim_pt8 (list (+ (car r_pt8) 10.5) (/ (+ (cadr r_pt8) (cadr r_pt11)) 2)))
+  (command "dimlinear" r_pt8 r_pt11 "v" dim_pt8)
+  
+  ;; 9. 标注r_pt2到r_pt11的垂直距离（判断dim_pt7和dim_pt8谁更偏右，再从该位置向右偏移5.5）（将尺寸保留两位小数）
   (setq old_dimdec (getvar "dimdec"))
   (setvar "dimdec" 1)
-  (setq dim_dx1 (car dim_pt5))
-  (setq dim_dx2 (car dim_pt6))
-  (if (> dim_dx1 dim_dx2)
-    (setq dim_pt7 (list (+ dim_dx1 5.5) (/ (+ (cadr r_pt2) (cadr r_pt11)) 2)))
-    (setq dim_pt7 (list (+ dim_dx2 5.5) (/ (+ (cadr r_pt2) (cadr r_pt11)) 2)))
+  (setq dim_dx7 (car dim_pt7))
+  (setq dim_dx8 (car dim_pt8))
+  (if (> dim_dx7 dim_dx8)
+    (setq dim_pt9 (list (+ dim_dx7 5.5) (/ (+ (cadr r_pt2) (cadr r_pt11)) 2)))
+    (setq dim_pt9 (list (+ dim_dx8 5.5) (/ (+ (cadr r_pt2) (cadr r_pt11)) 2)))
   )
-  (command "dimlinear" r_pt2 r_pt11 "v" dim_pt7)
+  (command "dimlinear" r_pt2 r_pt11 "v" dim_pt9)
   (setvar "dimdec" old_dimdec)
-  
-   ;; 8. 标注圆弧的半径（标注l_pt1到r_pt1的圆弧，位置在左侧四等分点处）
-  ;; 关闭尺寸线强制
-  (setq old_dimtofl (getvar "dimtofl"))
-  (setvar "dimtofl" 0)
-  
-  ;; 使用正确的圆弧圆心c_pt3（这是一个下圆弧，圆心在圆弧上）
-  ;; 圆心坐标：c_pt3 = (0, r0 - sag)
-  ;; 圆弧最低点：c_pt1 = (0, -sag)
-  (setq arc_center c_pt3)  ; 正确的圆心坐标
-  
-  ;; 计算左侧四等分点的角度：从l_pt1角度(135度)向r_pt1角度(45度)移动1/4
-  (setq left_quarter_angle (+ (* pi 0.75) (* (- (* pi 0.25) (* pi 0.75)) 0.25)))
-  ;; 计算左侧四等分点的坐标
-  (setq left_quarter_pt (list (+ (car arc_center) (* r0 (cos left_quarter_angle)))
-                               (+ (cadr arc_center) (* r0 (sin left_quarter_angle)))))
-  ;; 标注位置在左侧四等分点向右上方偏移0.5
-  (setq dim_pt8 (list (+ (car left_quarter_pt) 0.5) (+ (cadr left_quarter_pt) 0.5)))
-  (command "dimradius" left_quarter_pt dim_pt8)
-  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择
-  (while (> (getvar "CMDACTIVE") 0)
-    (command pause)
-  )
 
-  ;;9. 标注R3圆弧的半径（标注位置在右侧四等分点向左下方偏移0.5）
-  ;; 计算R3圆弧的右侧四等分点（圆心在l_pt12和r_pt12的中点，半径为3）
-  (setq r3_arc_center (list 0 (-(+ (+ sag 8) b0))))
-  ;; 右侧四等分点在角度0的位置（最右侧）
-  (setq right_quarter_pt (list (+ (car r3_arc_center) 3) (cadr r3_arc_center)))
-  ;; 标注位置在右侧四等分点向左下方偏移0.5
-  (setq dim_pt9 (list (- (car right_quarter_pt) 0.5) (- (cadr right_quarter_pt) 0.5)))
-  (command "dimradius" right_quarter_pt "t" "<>" dim_pt9)
-  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择
-  (while (> (getvar "CMDACTIVE") 0)
-    (command pause)
-  )
-    ;; 恢复尺寸线强制
-  (setvar "dimtofl" old_dimtofl)
-  
-  ;;10. 标注R3圆弧顶点c_pt2和r_pt11的垂直距离（向右偏移5.5）
+  ;; 10. 标注R3圆弧顶点c_pt2和r_pt11的垂直距离（向右偏移5.5）
   (setq dim_pt10 (list (+ (car r_pt11) 5.5) (/ (+ (cadr c_pt2) (cadr r_pt11)) 2)))
   (command "dimlinear" c_pt2 r_pt11 "v" dim_pt10)
   
