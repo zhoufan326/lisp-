@@ -1,4 +1,4 @@
-(defun c:JZM2 (r0 a0 scale_str t0 tech_choice custom_tech_text slot_choice /
+(defun JZM2 (r0 a0 scale_str t0 tech_choice custom_tech_text slot_choice /
                old_osmode old_cmdecho old_orthomode old_clayer old_attdia product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
@@ -49,26 +49,36 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (if (or (null r0) (null a0) (null t0))
+  (princ "\n=== 锥度基准模绘图程序 ===")
+  (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
+  (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
+  (if (or (null scale_str) (= scale_str "")) 
     (progn
-      (princ "\n=== 锥度基准模绘图程序 ===")
-      (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
-      (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
-      (if (or (null scale_str) (= scale_str "")) (setq scale_str (getstring "\n请输入比例 (例如: 1:1, 1:2, 2:1): ")))
-      (if (null scale_str) (setq scale_str "1:1"))
-      (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
-      (if (null tech_choice) (setq tech_choice (getint "\n请选择技术要求 (1:默认, 2:自定义): ")))
-      (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2)) (setq tech_choice 1))
-      (if (and (= tech_choice 2) (null custom_tech_text)) (setq custom_tech_text (getstring T "\n请输入自定义技术要求内容: ")))
-      (if (null slot_choice) (setq slot_choice (getint "\n请选择开槽方式 (0:都不开槽, 1:凹模, 2:凸模, 3:都开): ")))
-      (if (or (null slot_choice) (< slot_choice 0) (> slot_choice 3)) (setq slot_choice 0))
+      (setq scale_str (getstring "\n请输入比例 (默认 1:1): "))
+      (if (or (null scale_str) (= scale_str "")) (setq scale_str "1:1"))
+    )
+  )
+  (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
+  (if (null tech_choice) 
+    (progn
+      (setq tech_choice (getint "\n请选择技术要求 (1:默认, 2:自定义): "))
+      (if (null tech_choice) (setq tech_choice 1))
+    )
+  )
+  (if (and (= tech_choice 2) (null custom_tech_text)) 
+    (setq custom_tech_text (getstring T "\n请输入自定义技术要求内容: "))
+  )
+  (if (null slot_choice) 
+    (progn
+      (setq slot_choice (getint "\n请选择开槽方式 (0:都不开槽, 1:凹模, 2:凸模, 3:都开): "))
+      (if (null slot_choice) (setq slot_choice 0))
     )
   )
   
   ;; 验证输入参数的合理性
-  (if (or (<= r0 0) (<= a0 0) (<= t0 0))
+  (if (or (null r0) (null a0) (null t0) (<= r0 0) (<= a0 0) (<= t0 0))
     (progn
-      (princ "\n参数值必须大于0，程序终止。")
+      (princ "\n错误: 参数值必须大于0且不能为空。")
       ;; 恢复原始系统变量
       (setvar "osmode" old_osmode)
       (setvar "cmdecho" old_cmdecho)
@@ -656,3 +666,6 @@
   )
   exists
 )
+
+
+(defun c:JZM2 () (JZM2 nil nil nil nil nil nil nil) (princ))

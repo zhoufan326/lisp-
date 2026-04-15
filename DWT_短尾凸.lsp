@@ -1,4 +1,4 @@
-(defun c:dwt (r0 a0 t0 tool_type /
+(defun dwt (r0 a0 t0 tool_type /
                old_osmode old_cmdecho old_orthomode old_clayer old_attdia product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
@@ -80,19 +80,15 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (if (or (null r0) (null a0) (null t0))
-    (progn
-      (princ "\n=== 短尾M24凸工装绘图程序 ===")
-      (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
-      (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
-      (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
-    )
-  )
+  (princ "\n=== 短尾M24凸工装绘图程序 ===")
+  (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
+  (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
+  (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
   
   ;; 验证输入参数的合理性
-  (if (or (<= r0 0) (<= a0 0) (<= t0 0))
+  (if (or (null r0) (null a0) (null t0) (<= r0 0) (<= a0 0) (<= t0 0))
     (progn
-      (princ "\n参数值必须大于0，程序终止。")
+      (princ "\n错误: 参数值必须大于0且不能为空。")
       ;; 恢复原始系统变量
       (setvar "osmode" old_osmode)
       (setvar "cmdecho" old_cmdecho)
@@ -507,3 +503,6 @@
 )
 
 
+
+
+(defun c:dwt () (dwt nil nil nil nil) (princ))

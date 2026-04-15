@@ -64,28 +64,28 @@ class JZM_锥度_基准模_UI:
         
         r0_frame = ttk.Frame(param_frame)
         r0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(r0_frame, text="圆弧半径(r0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(r0_frame, text="曲率半径(r0):", width=15, font=f_norm).pack(side=tk.LEFT)
         r0_var = tk.StringVar()
         ttk.Entry(r0_frame, textvariable=r0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["r0"] = r0_var
         
         a0_frame = ttk.Frame(param_frame)
         a0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(a0_frame, text="大端宽度(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(a0_frame, text="口径(直径)(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
         a0_var = tk.StringVar()
         ttk.Entry(a0_frame, textvariable=a0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["a0"] = a0_var
         
         t0_frame = ttk.Frame(param_frame)
         t0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(t0_frame, text="总厚度(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(t0_frame, text="边厚(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
         t0_var = tk.StringVar()
         ttk.Entry(t0_frame, textvariable=t0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["t0"] = t0_var
         
         scale_frame = ttk.Frame(param_frame)
         scale_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(scale_frame, text="图纸比例:", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(scale_frame, text="比例:", width=15, font=f_norm).pack(side=tk.LEFT)
         scale_var = tk.StringVar(value="1:1")
         self.inputs["scale_str"] = scale_var
         scale_combo = ttk.Combobox(scale_frame, textvariable=scale_var, values=SCALE_OPTIONS, state="readonly", font=f_norm)
@@ -101,14 +101,14 @@ class JZM_锥度_基准模_UI:
         
         custom_tech_frame = ttk.Frame(param_frame)
         custom_tech_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(custom_tech_frame, text="自定义技术:", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(custom_tech_frame, text="自定义技术要求内容:", width=15, font=f_norm).pack(side=tk.LEFT)
         custom_tech_var = tk.StringVar()
         self.inputs["custom_tech_text"] = custom_tech_var
         ttk.Entry(custom_tech_frame, textvariable=custom_tech_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         slot_frame = ttk.Frame(param_frame)
         slot_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(slot_frame, text="开槽选项:", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(slot_frame, text="开槽方式:", width=15, font=f_norm).pack(side=tk.LEFT)
         slot_var = tk.StringVar(value="0")
         self.inputs["slot_choice"] = slot_var
         for val, text in SLOT_OPTIONS:

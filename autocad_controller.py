@@ -82,6 +82,13 @@ try:
 except ImportError:
     HAS_PRINT_MANAGER = False
 
+# Import filename generator
+try:
+    from filename import generate_filename
+    HAS_FILENAME_GENERATOR = True
+except ImportError:
+    HAS_FILENAME_GENERATOR = False
+
 # --- AutoCAD Core Logic (Optimized for New Drawing Creation) ---
 
 def is_autocad_ready(acad, max_wait=5):
@@ -270,23 +277,44 @@ def load_single_lisp_file(doc, lisp_file, functions=None):
     if not functions:
         load_command = f'(progn (vl-load-com) (load "{lisp_path}") (princ (strcat "\\n>> " "{file_name}" " 已加载。")) (princ))'
     else:
-        # 改进：由于 AutoCAD 内置的 (autoload) 不支持带参数的 c: 函数（它定义的桩函数是 0 参数的），
-        # 我们这里通过手动定义带参数的桩函数来实现支持参数的“懒加载” (Lazy Load)。
+        # 手动定义桩函数以实现“懒加载” (Lazy Load)
         stubs = []
+        # 记录已处理的基础名称，防止重复
+        processed_names = set()
+        
         for func in functions:
-            if func.name.lower().startswith("c:"):
-                # 获取参数列表，如 "r0 a0 t0"
+            name_lower = func.name.lower()
+            # 仅为 c: 开头的命令生成桩函数，因为它们是用户在命令行或 UI 调用的入口
+            if name_lower.startswith("c:"):
+                base_name = name_lower[2:]
+                if base_name in processed_names:
+                    continue
+                
+                # 定义 0 参数的 c: 桩函数
+                stub_c = f'(defun {func.name} () (load "{lisp_path}") ({func.name}))'
+                stubs.append(stub_c)
+                
+                # 同时定义同名的带参数核心函数桩 (用于 Python UI 传参调用)
+                # 假设核心函数名就是去掉 c: 的部分
                 params_str = " ".join(func.params)
-                # 定义桩函数：调用时先加载文件，然后使用 apply 转发调用
-                # 注意：文件加载后，真实的函数会覆盖这个桩函数
-                stub = f'(defun {func.name} ({params_str}) (load "{lisp_path}") (apply \'{func.name} (list {params_str})))'
-                stubs.append(stub)
+                if not params_str:
+                    # 如果 c: 定义本身没参数，尝试从 functions 中找同名无 c: 的函数参数
+                    for f2 in functions:
+                        if f2.name.lower() == base_name:
+                            params_str = " ".join(f2.params)
+                            break
+                
+                if params_str:
+                    stub_core = f'(defun {base_name} ({params_str}) (load "{lisp_path}") (apply \'{base_name} (list {params_str})))'
+                    stubs.append(stub_core)
+                
+                processed_names.add(base_name)
         
         if not stubs:
             load_command = f'(progn (vl-load-com) (load "{lisp_path}") (princ (strcat "\\n>> " "{file_name}" " 已加载。")) (princ))'
         else:
             stubs_code = " ".join(stubs)
-            load_command = f'(progn (vl-load-com) {stubs_code} (princ (strcat "\\n>> " "{file_name}" " 已通过参数化桩函数注册。")) (princ))'
+            load_command = f'(progn (vl-load-com) {stubs_code} (princ (strcat "\\n>> " "{file_name}" " 已注册。")) (princ))'
     
     try:
         doc.Activate()
@@ -374,11 +402,11 @@ class LispParser:
     def parse_file(file_path: str) -> List[LispFunction]:
         functions = []
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, 'r', encoding='gbk', errors='ignore') as f:
                 content = f.read()
             for match in LispParser.DEFUN_PATTERN.finditer(content):
                 name = match.group(1)
-                if not name.lower().startswith("c:"): continue
+                # 同时支持 c: 命令和 普通函数
                 params_raw = match.group(2).split('/')
                 params_only = params_raw[0].strip().split()
                 params = [p.strip() for p in params_only if p.strip()]
@@ -542,6 +570,7 @@ class AppController:
         self.model = model
         self.view = view
         self.acad = None
+        self.current_drawing_params = {}  # 保存当前绘图参数用于命名和打印
         self._bind_events()
         self._init_state()
 
@@ -678,22 +707,22 @@ class AppController:
             file_name = os.path.splitext(lfile.name)[0]
             if file_name == "JZM_短尾M24_基准模":
                 doc = "短尾M24基准模绘图程序\n\n参数说明：\n"
-                doc += "r0: 圆弧半径\n"
-                doc += "a0: 大端宽度\n"
-                doc += "t0: 总厚度\n"
-                doc += "scale_str: 图纸比例\n"
+                doc += "r0: 曲率半径\n"
+                doc += "a0: 口径(直径)\n"
+                doc += "t0: 边厚\n"
+                doc += "scale_str: 比例\n"
                 doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
                 doc += "custom_tech_text: 自定义技术要求内容\n"
-                doc += "slot_choice: 开槽选项 (0: 不添加, 1: 凹模开槽, 2: 凸模开槽, 3: 都添加)"
+                doc += "slot_choice: 开槽方式 (0: 都不开槽, 1: 凹模, 2: 凸模, 3: 都开)"
             elif file_name == "JZM_锥度_基准模":
                 doc = "锥度基准模绘图程序\n\n参数说明：\n"
-                doc += "r0: 圆弧半径\n"
-                doc += "a0: 大端宽度\n"
-                doc += "scale_str: 图纸比例\n"
-                doc += "t0: 总厚度\n"
+                doc += "r0: 曲率半径\n"
+                doc += "a0: 口径(直径)\n"
+                doc += "scale_str: 比例\n"
+                doc += "t0: 边厚\n"
                 doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
                 doc += "custom_tech_text: 自定义技术要求内容\n"
-                doc += "slot_choice: 开槽选项 (0: 不添加, 1: 凹模开槽, 2: 凸模开槽, 3: 都添加)"
+                doc += "slot_choice: 开槽方式 (0: 都不开槽, 1: 凹模, 2: 凸模, 3: 都开)"
             elif file_name in ["DWA_短尾凹", "DWT_短尾凸", "XZA_小锥度凹", "XZT_小锥度凸"]:
                 name_map = {
                     "DWA_短尾凹": "短尾凹模",
@@ -703,16 +732,19 @@ class AppController:
                 }
                 doc = f"{name_map.get(file_name)}绘图程序\n\n参数说明：\n"
                 doc += "tool_type: 工装类型 (1-5)\n"
-                doc += "r0: 圆弧半径\n"
-                doc += "a0: 大端宽度\n"
-                doc += "t0: 总厚度"
+                doc += "r0: 曲率半径\n"
+                doc += "a0: 口径(直径)\n"
+                if file_name == "DWA_短尾凹":
+                    doc += "t0: 边厚"
+                else:
+                    doc += "t0: 总厚度"
             elif file_name == "XBA_下摆凹":
                 doc = "下摆凹模绘图程序\n\n参数说明：\n"
                 doc += "tool_type: 工装类型 (1-2)\n"
-                doc += "r0: 圆弧半径\n"
-                doc += "a0: 大端宽度\n"
-                doc += "t0: 总厚度\n"
-                doc += "b0: 摆动半径\n"
+                doc += "r0: 曲率半径\n"
+                doc += "a0: 口径(直径)\n"
+                doc += "t0: 平台宽度\n"
+                doc += "b0: 柄长\n"
                 doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
                 doc += "custom_tech_text: 自定义技术要求内容"
             else:
@@ -748,8 +780,22 @@ class AppController:
 
     def _ensure_cad_connection(self):
         """确保CAD连接，如果未连接则自动连接"""
-        if not self.acad:
+        # 尝试最多2次连接
+        for attempt in range(2):
             try:
+                # 检查是否已经有有效的连接
+                if self.acad:
+                    try:
+                        # 尝试访问ActiveDocument来验证连接是否有效
+                        doc = self.acad.ActiveDocument
+                        if doc:
+                            return True
+                    except Exception:
+                        # 连接已失效，清除旧连接
+                        self.acad = None
+                        continue
+                
+                # 尝试连接到AutoCAD
                 self.view.status_lbl.config(text="正在连接 AutoCAD...")
                 self.view.update()
                 
@@ -761,26 +807,30 @@ class AppController:
                 self.acad.Visible = True
                 
                 # 检查是否有活动文档
-                if not self.acad.ActiveDocument:
-                    messagebox.showwarning("提醒", "AutoCAD 已连接，但没有活动文档。请打开或创建一个图形文件。")
+                try:
+                    doc = self.acad.ActiveDocument
+                    if not doc:
+                        messagebox.showwarning("提醒", "AutoCAD 已连接，但没有活动文档。请打开或创建一个图形文件。")
+                        return False
+                    
+                    self.view.status_lbl.config(text="已成功连接到 AutoCAD")
+                    return True
+                except Exception as e:
+                    messagebox.showwarning("提醒", f"AutoCAD 已连接，但无法访问活动文档: {e}")
                     return False
-                
-                self.view.status_lbl.config(text="已成功连接到 AutoCAD")
-                return True
+                    
             except Exception as e:
-                self.view.status_lbl.config(text=f"错误: {e}")
-                messagebox.showerror("连接错误", str(e))
-                return False
-        else:
-            # 检查连接是否仍然有效
-            try:
-                if not self.acad.ActiveDocument:
-                    messagebox.showwarning("提醒", "AutoCAD 已连接，但没有活动文档。请打开或创建一个图形文件。")
+                self.acad = None
+                if attempt == 0:
+                    # 第一次尝试失败，继续尝试
+                    continue
+                else:
+                    # 第二次尝试仍然失败
+                    self.view.status_lbl.config(text=f"连接错误: {e}")
+                    messagebox.showerror("连接错误", f"无法连接到 AutoCAD: {e}")
                     return False
-                return True
-            except:
-                # 连接已失效，尝试重新连接
-                return self._ensure_cad_connection()
+        
+        return False
 
     def _on_execute_click(self, func: LispFunction):
         # 确保CAD连接
@@ -837,11 +887,23 @@ class AppController:
         try:
             self.view.status_lbl.config(text=f"正在执行 {function_name}...")
             
+            # 如果是 c: 命令且我们需要传参，则优先调用同名的普通函数 (不带 c: 前缀)
+            # 例如：Python UI 传入 "c:xba"，我们查找 "xba"
+            target_func_name = function_name
+            if function_name.lower().startswith("c:"):
+                potential_name = function_name[2:]
+                # 检查此文件是否包含该普通函数定义
+                if self.model.current_file and self.model.current_file.functions:
+                    for f in self.model.current_file.functions:
+                        if f.name.lower() == potential_name.lower() and f.params:
+                            target_func_name = f.name
+                            break
+            
             # 获取该函数的定义
             func_def = None
             if self.model.current_file and self.model.current_file.functions:
                 for f in self.model.current_file.functions:
-                    if f.name.lower() == function_name.lower():
+                    if f.name.lower() == target_func_name.lower():
                         func_def = f
                         break
             
@@ -850,19 +912,20 @@ class AppController:
             
             # 根据不同的函数构建参数列表
             args_list = []
-            if function_name in ["c:dwa", "c:dwt", "c:xza", "c:xzt"]:
+            # 注意：这里判断函数名时使用 target_func_name (可能是不带 c: 的版本)
+            clean_name = target_func_name.lower()
+            if clean_name.startswith("c:"): clean_name = clean_name[2:]
+
+            if clean_name in ["dwa", "dwt", "xza", "xzt"]:
                 # 这些函数的参数顺序：r0, a0, t0, tool_type
-                # 注意：tool_type 在 LISP 中通过 (= tool_type "1") 这种字符串方式判断
                 args_list = [
                     str(params.get("r0", "")),
                     str(params.get("a0", "")),
                     str(params.get("t0", "")),
                     f'"{params.get("tool_type", "1")}"'
                 ]
-            elif function_name == "c:JZM1" or function_name == "c:JZM2":
-                # JZM1: r0 a0 t0 scale_str tech_choice custom_tech_text slot_choice
-                # JZM2: r0 a0 scale_str t0 tech_choice custom_tech_text slot_choice
-                if function_name == "c:JZM1":
+            elif clean_name == "jzm1" or clean_name == "jzm2":
+                if clean_name == "jzm1":
                     args_list = [
                         str(params.get("r0", "")),
                         str(params.get("a0", "")),
@@ -872,7 +935,7 @@ class AppController:
                         f'"{params.get("custom_tech_text", "")}"',
                         str(params.get("slot_choice", "0"))
                     ]
-                else: # c:JZM2
+                else: # jzm2
                     args_list = [
                         str(params.get("r0", "")),
                         str(params.get("a0", "")),
@@ -882,9 +945,7 @@ class AppController:
                         f'"{params.get("custom_tech_text", "")}"',
                         str(params.get("slot_choice", "0"))
                     ]
-            elif function_name == "c:xba":
-                # XBA函数的参数顺序：r0, a0, t0, b0, tool_type, tech_choice, custom_tech_text
-                # 注意：tool_type 在 LISP 中通过 (= tool_type "1") 这种字符串方式判断
+            elif clean_name == "xba":
                 args_list = [
                     str(params.get("r0", "")),
                     str(params.get("a0", "")),
@@ -895,18 +956,66 @@ class AppController:
                     f'"{params.get("custom_tech_text", "")}"'
                 ]
             
-            run_lisp_function(self.acad, function_name, args_list, is_parameterized)
+            # 保存绘图参数用于命名和打印
+            self._save_drawing_params(clean_name, params)
+            
+            run_lisp_function(self.acad, target_func_name, args_list, is_parameterized)
             args_str = " ".join(args_list)
-            self.view.status_lbl.config(text=f"已发送命令: ({function_name} {args_str})")
+            self.view.status_lbl.config(text=f"已发送命令: ({target_func_name} {args_str})")
         except Exception as e:
             messagebox.showerror("CAD 错误", str(e))
+
+    def _save_drawing_params(self, func_name: str, params: Dict[str, Any]):
+        """保存绘图参数用于命名和打印"""
+        self.current_drawing_params = {
+            "func_name": func_name,
+            "r0": params.get("r0", ""),
+            "a0": params.get("a0", ""),
+            "t0": params.get("t0", ""),
+            "b0": params.get("b0", ""),
+            "tool_type": params.get("tool_type", ""),
+        }
+        
+        # 获取图号前缀
+        if func_name in ["dwa", "dwt", "xza", "xzt"]:
+            self.current_drawing_params["drawing_prefix"] = func_name.upper()
+        elif func_name == "jzm1":
+            self.current_drawing_params["drawing_prefix"] = "JZM"
+        elif func_name == "jzm2":
+            self.current_drawing_params["drawing_prefix"] = "JZM"
+        elif func_name == "xba":
+            self.current_drawing_params["drawing_prefix"] = "XBA"
+
+    def _get_generated_filename(self) -> str:
+        """根据当前绘图参数生成文件名"""
+        if not HAS_FILENAME_GENERATOR:
+            return None
+        
+        try:
+            radius = float(self.current_drawing_params.get("r0", 0))
+            chord_length = float(self.current_drawing_params.get("a0", 0))
+            drawing_type = self.current_drawing_params.get("drawing_prefix", "DRAWING")
+            
+            return generate_filename(radius, chord_length, drawing_type)
+        except Exception as e:
+            print(f"生成文件名失败: {e}")
+            return None
 
     def _execute_in_cad(self, func: LispFunction, params: Dict[str, Any]):
         # 确保CAD连接
         if not self._ensure_cad_connection():
             return
         try:
-            self.view.status_lbl.config(text=f"正在执行 {func.name}...")
+            # 逻辑同 _execute_custom_function：如果是带参调用，优先寻找不带 c: 的核心函数
+            target_func_name = func.name
+            if func.name.lower().startswith("c:") and func.params:
+                # 这种情况通常不会发生，因为我们的 LispParser 现在会解析出核心函数
+                pass 
+            elif not func.name.lower().startswith("c:"):
+                # 已经是核心函数名，直接使用
+                pass
+            
+            self.view.status_lbl.config(text=f"正在执行 {target_func_name}...")
             args_list = []
             for p in func.params:
                 v = params.get(p)
@@ -918,9 +1027,9 @@ class AppController:
                     args_list.append(f'"{v}"')
             
             is_parameterized = len(func.params) > 0
-            run_lisp_function(self.acad, func.name, args_list, is_parameterized)
+            run_lisp_function(self.acad, target_func_name, args_list, is_parameterized)
             args_str = " ".join(args_list)
-            self.view.status_lbl.config(text=f"已发送命令: ({func.name} {args_str})")
+            self.view.status_lbl.config(text=f"已发送命令: ({target_func_name} {args_str})")
         except Exception as e:
             messagebox.showerror("CAD 错误", str(e))
     
@@ -940,7 +1049,9 @@ class AppController:
             self.view.update()
             
             if HAS_PRINT_MANAGER:
-                output_path = plot_paper_space(doc, output_dir="P:\\工装绘图文件")
+                # 获取生成的文件名
+                generated_filename = self._get_generated_filename()
+                output_path = plot_paper_space(doc, output_dir="P:\\工装绘图文件", custom_filename=generated_filename)
                 if output_path:
                     self.view.status_lbl.config(text=f"任务已发送: {os.path.basename(output_path)}")
                     messagebox.showinfo("打印任务已发送", f"AutoCAD 正在后台生成 PDF。\n文件名将为:\n{os.path.basename(output_path)}\n\n请在 P:\\工装绘图文件 文件夹中查看结果。")

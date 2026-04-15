@@ -64,14 +64,14 @@ class XZA_小锥度凹_UI:
         
         r0_frame = ttk.Frame(param_frame)
         r0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(r0_frame, text="圆弧半径(r0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(r0_frame, text="曲率半径(r0):", width=15, font=f_norm).pack(side=tk.LEFT)
         r0_var = tk.StringVar()
         ttk.Entry(r0_frame, textvariable=r0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["r0"] = r0_var
         
         a0_frame = ttk.Frame(param_frame)
         a0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(a0_frame, text="大端宽度(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(a0_frame, text="口径(直径)(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
         a0_var = tk.StringVar()
         ttk.Entry(a0_frame, textvariable=a0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["a0"] = a0_var
