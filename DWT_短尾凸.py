@@ -5,11 +5,11 @@ import json
 import os
 
 TOOL_TYPES = [
-    ("1", "光凹模精加工"),
-    ("2", "光凸模及下料模"),
-    ("3", "切边模精细模"),
-    ("4", "切边模上料"),
-    ("5", "切边模切料")
+    ("1", "抛光模基模修盘"),
+    ("2", "抛光模修盘基模"),
+    ("3", "球面低抛细磨盘"),
+    ("4", "球面低抛粘盘"),
+    ("5", "球面低抛抛盘")
 ]
 
 class DWT_短尾凸_UI:
@@ -71,14 +71,14 @@ class DWT_短尾凸_UI:
         
         a0_frame = ttk.Frame(param_frame)
         a0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(a0_frame, text="大端宽度(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(a0_frame, text="口径(a0):", width=15, font=f_norm).pack(side=tk.LEFT)
         a0_var = tk.StringVar()
         ttk.Entry(a0_frame, textvariable=a0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["a0"] = a0_var
         
         t0_frame = ttk.Frame(param_frame)
         t0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(t0_frame, text="总厚度(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(t0_frame, text="边厚(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
         t0_var = tk.StringVar()
         ttk.Entry(t0_frame, textvariable=t0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["t0"] = t0_var

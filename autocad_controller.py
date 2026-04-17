@@ -1,1117 +1,283 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-AutoCAD Controller & GUI Manager (v2.7)
-Robust connection logic that ensures a NEW blank drawing is created from template.
-Prevents <unknown>.Add errors by checking AutoCAD's quiescent state.
-"""
-
-import os
-import re
-import time
-import json
-import glob
-import functools
-import tkinter as tk
+import os, json, tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from typing import List, Dict, Any, Optional, Callable
-from dataclasses import dataclass
+from lisp_loader import LispParser, load_single_lisp_file
+from acad_doc_manager import find_autocad, apply_template, configure_print_settings
+from lisp_executor import run_lisp
+from dwg_saver import save_dwg
+from acad_plot_manager import plot_paper_space
+from filename import generate_filename
 
-# 导入各个LISP文件对应的UI模块
-try:
-    from DWA_短尾凹 import DWA_短尾凹_UI
-    HAS_DWA = True
-except ImportError:
-    HAS_DWA = False
-
-try:
-    from DWT_短尾凸 import DWT_短尾凸_UI
-    HAS_DWT = True
-except ImportError:
-    HAS_DWT = False
-
-try:
-    from JZM_短尾M24_基准模 import JZM_短尾M24_基准模_UI
-    HAS_JZM1 = True
-except ImportError:
-    HAS_JZM1 = False
-
-try:
-    from JZM_锥度_基准模 import JZM_锥度_基准模_UI
-    HAS_JZM2 = True
-except ImportError:
-    HAS_JZM2 = False
-
-try:
-    from XBA_下摆凹 import XBA_下摆凹_UI
-    HAS_XBA = True
-except ImportError:
-    HAS_XBA = False
-
-try:
-    from XZA_小锥度凹 import XZA_小锥度凹_UI
-    HAS_XZA = True
-except ImportError:
-    HAS_XZA = False
-
-try:
-    from XZT_小锥度凸 import XZT_小锥度凸_UI
-    HAS_XZT = True
-except ImportError:
-    HAS_XZT = False
-
-# Try to import win32com for AutoCAD integration
-try:
-    import win32com.client
-    HAS_PYWIN32 = True
-except ImportError:
-    HAS_PYWIN32 = False
-
-# Import decorators from retry_decorator
-try:
-    from retry_decorator import retry_on_autocad_error, retry_with_backoff
-except ImportError:
-    def retry_on_autocad_error(*args, **kwargs):
-        def decorator(f): return f
-        return decorator
-
-# Import print manager
-try:
-    from acad_plot_manager import configure_print_settings, plot_paper_space
-    HAS_PRINT_MANAGER = True
-except ImportError:
-    HAS_PRINT_MANAGER = False
-
-# Import filename generator
-try:
-    from filename import generate_filename
-    HAS_FILENAME_GENERATOR = True
-except ImportError:
-    HAS_FILENAME_GENERATOR = False
-
-# --- AutoCAD Core Logic (Optimized for New Drawing Creation) ---
-
-def is_autocad_ready(acad, max_wait=5):
-    """
-    检查AutoCAD是否处于空闲状态（无正在运行的命令）
-    会持续等待直到CAD空闲或超时
-    
-    参数:
-        acad: AutoCAD应用对象
-        max_wait: 最大等待时间（秒），默认5秒
-    返回:
-        bool: 如果CAD空闲返回True，超时返回False
-    """
-    start_time = time.time()
-    while time.time() - start_time < max_wait:
-        try:
-            # 首先检查CAD是否可用
-            if not acad or not acad.ActiveDocument:
-                time.sleep(0.2)
-                continue
-                
-            # 检查命令名
-            try:
-                cmd_names = acad.GetVariable("CMDNAMES")
-                if cmd_names == "" or cmd_names is None:
-                    return True
-            except:
-                # GetVariable失败，尝试其他方法
-                try:
-                    # 检查ActiveDocument是否可用
-                    doc = acad.ActiveDocument
-                    if doc:
-                        # 尝试获取模型空间
-                        _ = doc.ModelSpace
-                except:
-                    time.sleep(0.2)
-                    continue
-            
-            # 如果有命令在运行，等待一小段时间再检查
-            time.sleep(0.2)
-        except Exception as e:
-            # 其他异常，等待后重试
-            time.sleep(0.3)
-    return False
-
-def wait_for_autocad_ready(acad, max_wait=10):
-    """
-    等待AutoCAD变为空闲状态，带超时
-    
-    参数:
-        acad: AutoCAD应用对象
-        max_wait: 最大等待时间（秒），默认10秒
-    返回:
-        bool: 如果成功等待到空闲返回True，超时返回False
-    """
-    if is_autocad_ready(acad, max_wait):
-        return True
-    else:
-        return False
-
-def force_cancel_commands(acad, max_attempts=3):
-    """
-    尝试取消正在运行的AutoCAD命令
-    改进版：避免在CAD极度繁忙时发送ESC导致错误
-    
-    参数:
-        acad: AutoCAD应用对象
-        max_attempts: 最大尝试次数，默认3次
-    返回:
-        bool: 如果CAD变为空闲返回True，否则返回False
-    """
-    for attempt in range(1, max_attempts + 1):
-        try:
-            # 首先检查是否已经空闲
-            if is_autocad_ready(acad, max_wait=0.5):
-                return True
-            
-            # 尝试将 AutoCAD 窗口置顶
-            acad.Visible = True
-            time.sleep(0.1)
-            
-            doc = acad.ActiveDocument
-            if doc:
-                try:
-                    doc.Activate()
-                    time.sleep(0.1)
-                    
-                    # 谨慎发送取消指令
-                    try:
-                        # 先尝试发送一个空行
-                        doc.SendCommand("\n")
-                        time.sleep(0.2)
-                        
-                        # 再发送ESC
-                        doc.SendCommand("\x03")
-                    except:
-                        # 如果SendCommand失败，等待更长时间
-                        pass
-                    
-                    # 等待更长时间让CAD处理
-                    time.sleep(1 + attempt * 0.5)
-                    
-                    # 检查是否成功
-                    if is_autocad_ready(acad, max_wait=1):
-                        return True
-                        
-                except:
-                    pass
-            
-            if attempt < max_attempts:
-                time.sleep(1 + attempt)  # 递增等待时间
-                
-        except:
-            if attempt < max_attempts:
-                time.sleep(2)
-                
-    # 最后再尝试检查一次
-    return is_autocad_ready(acad, max_wait=0.5)
-
-@retry_on_autocad_error(max_attempts=5, initial_delay=2) 
-def find_autocad(): 
-    """查找或启动AutoCAD应用程序""" 
-    if not HAS_PYWIN32:
-        raise RuntimeError("pywin32 未安装。请运行 'pip install pywin32'。")
-    
-    acad = None
-    try: 
-        acad = win32com.client.GetActiveObject("AutoCAD.Application") 
-        print("已连接到运行中的AutoCAD") 
-    except: 
-        try: 
-            acad = win32com.client.Dispatch("AutoCAD.Application") 
-            acad.Visible = True
-            print("已启动新AutoCAD实例") 
-        except Exception as e: 
-            raise RuntimeError(f"无法启动AutoCAD: {e}")
-            
-    time.sleep(3) 
-    return acad
-
-@retry_on_autocad_error(max_attempts=3, initial_delay=2) 
-def create_new_doc_from_template(acad, template_path):
-    """显式创建基于样板的新文档"""
-    if not os.path.exists(template_path):
-        return None
-        
+# UI Modules Import
+HAS_UI = {}
+for name in ["DWA_短尾凹", "DWT_短尾凸", "JZM_短尾M24_基准模", "JZM_锥度_基准模", "XBA_下摆凹", "XBT_下摆凸", "MJA_迈均凹", "MJT_迈均凸", "XZA_小锥度凹", "XZT_小锥度凸"]:
     try:
-        abs_path = os.path.abspath(template_path)
-        acad.Visible = True
-        
-        # 在执行 Add 之前，尝试确保 CAD 是"安静"的
-        # 如果 CAD 弹出了对话框（如"找不到字体"），Add 可能会失败
-        if not is_autocad_ready(acad):
-            force_cancel_commands(acad)
-            
-        # Documents.Add 始终会创建一个全新的空白图形文件
-        doc = acad.Documents.Add(abs_path)
-        return doc
-    except Exception as e:
-        return None
-
-def apply_template_with_fallback(acad, primary_template, backup_template): 
-    """应用样板逻辑：始终尝试新建文档""" 
-    if not acad: return None
-    
-    # 1. 尝试主样板新建
-    doc = create_new_doc_from_template(acad, primary_template)
-    if doc:
-        return doc
-        
-    # 2. 尝试备用样板新建
-    doc = create_new_doc_from_template(acad, backup_template)
-    if doc:
-        return doc
-    
-    return None 
-
-@retry_on_autocad_error(max_attempts=3, initial_delay=1) 
-def load_single_lisp_file(doc, lisp_file, functions=None): 
-    """加载单个LISP文件 (使用 autoload 模式)""" 
-    if not doc: return False
-    lisp_path = os.path.abspath(lisp_file).replace("\\", "/") 
-    file_name = os.path.basename(lisp_file)
-    
-    # 获取该文件中的所有 c: 命令名
-    if not functions:
-        load_command = f'(progn (vl-load-com) (load "{lisp_path}") (princ (strcat "\\n>> " "{file_name}" " 已加载。")) (princ))'
-    else:
-        # 手动定义桩函数以实现“懒加载” (Lazy Load)
-        stubs = []
-        # 记录已处理的基础名称，防止重复
-        processed_names = set()
-        
-        for func in functions:
-            name_lower = func.name.lower()
-            # 仅为 c: 开头的命令生成桩函数，因为它们是用户在命令行或 UI 调用的入口
-            if name_lower.startswith("c:"):
-                base_name = name_lower[2:]
-                if base_name in processed_names:
-                    continue
-                
-                # 定义 0 参数的 c: 桩函数
-                stub_c = f'(defun {func.name} () (load "{lisp_path}") ({func.name}))'
-                stubs.append(stub_c)
-                
-                # 同时定义同名的带参数核心函数桩 (用于 Python UI 传参调用)
-                # 假设核心函数名就是去掉 c: 的部分
-                params_str = " ".join(func.params)
-                if not params_str:
-                    # 如果 c: 定义本身没参数，尝试从 functions 中找同名无 c: 的函数参数
-                    for f2 in functions:
-                        if f2.name.lower() == base_name:
-                            params_str = " ".join(f2.params)
-                            break
-                
-                if params_str:
-                    stub_core = f'(defun {base_name} ({params_str}) (load "{lisp_path}") (apply \'{base_name} (list {params_str})))'
-                    stubs.append(stub_core)
-                
-                processed_names.add(base_name)
-        
-        if not stubs:
-            load_command = f'(progn (vl-load-com) (load "{lisp_path}") (princ (strcat "\\n>> " "{file_name}" " 已加载。")) (princ))'
-        else:
-            stubs_code = " ".join(stubs)
-            load_command = f'(progn (vl-load-com) {stubs_code} (princ (strcat "\\n>> " "{file_name}" " 已注册。")) (princ))'
-    
-    try:
-        doc.Activate()
-        doc.SendCommand(load_command + "\n") 
-        return True
-    except Exception as e:
-        raise e
-
-@retry_on_autocad_error(max_attempts=5, initial_delay=2) 
-def run_lisp_function(acad, function_name, args_list=None, is_parameterized=True): 
-    """
-    在当前活动文档运行函数
-    支持直接传参 (c:FUNC arg1...) 和 模拟输入两种模式
-    
-    参数:
-        acad: AutoCAD应用对象
-        function_name: 要执行的函数名
-        args_list: 参数列表
-        is_parameterized: 是否使用带参调用模式。若为 False，则发送 (c:FUNC) 后模拟输入。
-    返回:
-        bool: 成功返回True
-    """
-    doc = acad.ActiveDocument 
-    if not doc: 
-        raise RuntimeError("找不到活动文档")
-    
-    # 第一步：确保AutoCAD处于空闲状态
-    if not wait_for_autocad_ready(acad, max_wait=5):
-        force_cancel_commands(acad, max_attempts=2)
-        wait_for_autocad_ready(acad, max_wait=3)
-    
-    # 第二步：激活文档并发送命令
-    try:
-        doc.Activate()
-        time.sleep(0.3)
-        
-        if is_parameterized:
-            # 带参调用模式：(c:JZM1 90 70 8 "1:1" 1 "" 0)
-            args_str = " " + " ".join(args_list) if args_list else ""
-            command = f"({function_name}{args_str})"
-            doc.SendCommand("\n")
-            time.sleep(0.2)
-            doc.SendCommand(command + "\n")
-        else:
-            # 模拟输入模式：发送 (c:FUNC) 然后逐个输入参数
-            doc.SendCommand("\n")
-            time.sleep(0.2)
-            doc.SendCommand(f"({function_name})\n")
-            
-            if args_list:
-                for arg in args_list:
-                    # 模拟用户逐个回车输入参数
-                    time.sleep(0.5)
-                    # 去除引号（模拟输入不需要引号，除非是字符串输入）
-                    clean_arg = arg.strip('"')
-                    doc.SendCommand(clean_arg + "\n")
-        
-        time.sleep(1.0)
-        return True
-        
-    except Exception as e:
-        raise 
-
-# --- Data Models ---
-
-@dataclass
-class LispFunction:
-    name: str
-    params: List[str]
-    docstring: str = ""
-
-@dataclass
-class LispFile:
-    path: str
-    name: str
-    functions: List[LispFunction] = None
-
-class LispParser:
-    DEFUN_PATTERN = re.compile(
-        r'\(defun\s+([^\s\(\)]+)\s*\(([^\(\)]*)\)\s*(?:"([^"]*)"\s*)?', 
-        re.IGNORECASE | re.DOTALL
-    )
-
-    @staticmethod
-    def parse_file(file_path: str) -> List[LispFunction]:
-        functions = []
-        try:
-            with open(file_path, 'r', encoding='gbk', errors='ignore') as f:
-                content = f.read()
-            for match in LispParser.DEFUN_PATTERN.finditer(content):
-                name = match.group(1)
-                # 同时支持 c: 命令和 普通函数
-                params_raw = match.group(2).split('/')
-                params_only = params_raw[0].strip().split()
-                params = [p.strip() for p in params_only if p.strip()]
-                docstring = match.group(3) or ""
-                functions.append(LispFunction(name, params, docstring.strip()))
-        except Exception as e:
-            print(f"解析错误 {file_path}: {e}")
-        return functions
-
-# --- GUI Components ---
+        mod = __import__(name, fromlist=[f"{name}_UI"])
+        HAS_UI[name] = getattr(mod, f"{name}_UI")
+    except: pass
 
 class ExecutionDialog(tk.Toplevel):
-    def __init__(self, parent, lisp_func: LispFunction, on_execute: Callable, font_size: int):
+    def __init__(self, parent, func, on_exec, fs):
         super().__init__(parent)
-        self.title(f"参数输入: {lisp_func.name}")
-        self.lisp_func = lisp_func
-        self.on_execute = on_execute
-        self.font_size = font_size
-        self.inputs = {}
-        # 增加参数记忆功能
-        self.config_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr")
-        os.makedirs(self.config_dir, exist_ok=True)
-        self.param_file = os.path.join(self.config_dir, f"generic_{lisp_func.name}_params.json")
-        
-        self._setup_ui()
-        self.load_params() # UI 设置好后再加载
-        
-        self.transient(parent)
-        self.grab_set()
+        self.title(f"参数: {func.name}"); self.func = func; self.on_exec = on_exec; self.fs = fs; self.inputs = {}
+        self.cfg_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr")
+        os.makedirs(self.cfg_dir, exist_ok=True)
+        self.p_file = os.path.join(self.cfg_dir, f"generic_{func.name}_params.json")
+        self._setup(); self.load_p(); self.transient(parent); self.grab_set()
 
-    def load_params(self):
-        try:
-            if os.path.exists(self.param_file):
-                with open(self.param_file, 'r', encoding='utf-8') as f:
-                    params = json.load(f)
-                for key, value in params.items():
-                    if key in self.inputs:
-                        var = self.inputs[key]
-                        if isinstance(var, (tk.StringVar, tk.IntVar, tk.BooleanVar)):
-                            var.set(value)
-        except Exception as e:
-            print(f"加载参数失败: {e}")
-
-    def save_params(self):
-        try:
-            params = {k: v.get() for k, v in self.inputs.items()}
-            with open(self.param_file, 'w', encoding='utf-8') as f:
-                json.dump(params, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"保存参数失败: {e}")
-
-    def _setup_ui(self):
-        main_frame = ttk.Frame(self, padding="30")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        f_large = ("Segoe UI", self.font_size, "bold")
-        f_norm = ("Segoe UI", self.font_size)
-
-        ttk.Label(main_frame, text=f"命令: {self.lisp_func.name}", font=f_large).pack(pady=(0, 20))
-
-        if not self.lisp_func.params:
-            ttk.Label(main_frame, text="此命令无需参数。", font=f_norm).pack(pady=20)
-        else:
-            for param in self.lisp_func.params:
-                frame = ttk.Frame(main_frame)
-                frame.pack(fill=tk.X, pady=15)
-                ttk.Label(frame, text=f"{param}:", width=12, font=f_norm).pack(side=tk.LEFT)
-                if 'flag' in param.lower() or 'is-' in param.lower():
-                    var = tk.BooleanVar()
-                    ttk.Checkbutton(frame, variable=var).pack(side=tk.LEFT)
-                    self.inputs[param] = var
-                else:
-                    var = tk.StringVar()
-                    ttk.Entry(frame, textvariable=var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
-                    self.inputs[param] = var
-
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=30)
-        ttk.Button(btn_frame, text="执行", command=self._on_run).pack(side=tk.RIGHT, padx=15)
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.RIGHT)
-
-    def _on_run(self):
-        self.save_params() # 保存参数
-        values = {k: v.get() for k, v in self.inputs.items()}
-        self.on_execute(self.lisp_func, values)
-        self.destroy()
-
-class AppView(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("AutoCAD LISP 智能管理面板 (v2.7)")
-        self.geometry("1800x1100")
-        self.font_size_base = 30
-        self._configure_styles()
-        self._setup_ui()
-
-    def _configure_styles(self):
-        try:
-            from ctypes import windll
-            windll.shcore.SetProcessDpiAwareness(1)
-        except: pass
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        fs = self.font_size_base
-        self.style.configure("Treeview", font=("Segoe UI", fs), rowheight=int(fs * 2.2))
-        self.style.configure("Treeview.Heading", font=("Segoe UI", fs, "bold"))
-        self.style.configure("TFrame", background="#f5f5f7")
-        self.style.configure("TLabel", background="#f5f5f7", font=("Segoe UI", fs))
-        self.style.configure("TButton", font=("Segoe UI", fs))
-        self.style.configure("Accent.TButton", background="#0078d4", foreground="white", font=("Segoe UI", fs, "bold"))
-        self.style.configure("Save.TButton", background="#28a745", foreground="white", font=("Segoe UI", fs, "bold"))
-        self.style.configure("Init.TButton", background="#ff9800", foreground="white", font=("Segoe UI", fs, "bold"))
-
-    def _setup_ui(self):
-        fs = self.font_size_base
-        self.toolbar = ttk.Frame(self, padding=15)
-        self.toolbar.pack(side=tk.TOP, fill=tk.X)
-        self.btn_load_dir = ttk.Button(self.toolbar, text="📂 加载目录")
-        self.btn_load_dir.pack(side=tk.LEFT, padx=15)
-        self.btn_connect_cad = ttk.Button(self.toolbar, text="🔌 连接 CAD")
-        self.btn_connect_cad.pack(side=tk.LEFT, padx=15)
-        self.btn_init_cad = ttk.Button(self.toolbar, text="🚀 初始化 CAD (新建图形)", style="Init.TButton")
-        self.btn_init_cad.pack(side=tk.LEFT, padx=15)
-        self.btn_print = ttk.Button(self.toolbar, text="🖨️ 打印")
-        self.btn_print.pack(side=tk.LEFT, padx=15)
-        self.btn_refresh = ttk.Button(self.toolbar, text="🔄 刷新")
-        self.btn_refresh.pack(side=tk.LEFT, padx=15)
-        
-        self.paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
-        self.paned.pack(fill=tk.BOTH, expand=True, padx=30, pady=15)
-        self.nav_frame = ttk.Frame(self.paned)
-        self.tree = ttk.Treeview(self.nav_frame, show="tree", selectmode="browse")
-        self.tree.column("#0", width=600, minwidth=400)  # 设置列宽：600像素，最小400像素
-        self.tree.pack(fill=tk.BOTH, expand=True)
-        self.paned.add(self.nav_frame, weight=1)
-        
-        self.details_frame = ttk.Frame(self.paned, padding=40)
-        self.paned.add(self.details_frame, weight=6)
-        self.lbl_file_name = ttk.Label(self.details_frame, text="请选择 LISP 文件", font=("Segoe UI", fs + 12, "bold"))
-        self.lbl_file_name.pack(anchor=tk.W)
-        ttk.Label(self.details_frame, text="文档说明:", font=("Segoe UI", fs, "bold")).pack(anchor=tk.W, pady=(20, 10))
-        self.txt_docs = tk.Text(self.details_frame, wrap=tk.WORD, font=("Segoe UI", fs), height=5, relief=tk.SOLID, bd=1)
-        self.txt_docs.pack(fill=tk.X, pady=(0, 10))
-        self.btn_save_docs = ttk.Button(self.details_frame, text="💾 保存文档", style="Save.TButton")
-        self.btn_save_docs.pack(anchor=tk.E, pady=(0, 20))
-        ttk.Label(self.details_frame, text="可用命令 (c:):", font=("Segoe UI", fs, "bold")).pack(anchor=tk.W, pady=(20, 10))
-        self.func_canvas = tk.Canvas(self.details_frame, bg="#f5f5f7", highlightthickness=0)
-        self.func_scrollbar = ttk.Scrollbar(self.details_frame, orient="vertical", command=self.func_canvas.yview)
-        self.func_scroll_frame = ttk.Frame(self.func_canvas)
-        self.func_scroll_frame.bind("<Configure>", lambda e: self.func_canvas.configure(scrollregion=self.func_canvas.bbox("all")))
-        self.func_canvas.create_window((0, 0), window=self.func_scroll_frame, anchor="nw")
-        self.func_canvas.configure(yscrollcommand=self.func_scrollbar.set)
-        self.func_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.func_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.status_bar = ttk.Frame(self, relief=tk.SUNKEN, padding=8)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.status_lbl = ttk.Label(self.status_bar, text="就绪", font=("Segoe UI", fs - 5))
-        self.status_lbl.pack(side=tk.LEFT)
-
-class AppController:
-    def __init__(self, model: 'AppModel', view: AppView):
-        self.model = model
-        self.view = view
-        self.acad = None
-        self.current_drawing_params = {}  # 保存当前绘图参数用于命名和打印
-        self._bind_events()
-        self._init_state()
-
-    def _init_state(self):
-        last_dir = self.model.get_config("last_dir", os.getcwd())
-        self._load_directory(last_dir)
-
-    def _bind_events(self):
-        self.view.btn_load_dir.config(command=self._on_load_dir)
-        self.view.btn_connect_cad.config(command=self._on_connect_cad)
-        self.view.btn_init_cad.config(command=self._on_init_cad)
-        self.view.btn_print.config(command=self._on_print)
-        self.view.btn_refresh.config(command=self._on_refresh)
-        self.view.tree.bind("<<TreeviewSelect>>", self._on_select_file)
-        self.view.btn_save_docs.config(command=self._on_save_docs)
-
-    def _on_load_dir(self):
-        dir = filedialog.askdirectory(initialdir=self.model.last_dir)
-        if dir: self._load_directory(dir)
-
-    def _load_directory(self, dir: str):
-        self.model.last_dir = dir
-        self.model.save_config("last_dir", dir)
-        self.model.scan_directory(dir)
-        self._refresh_tree()
-        self.view.status_lbl.config(text=f"目录已加载: {dir}")
-
-    def _on_connect_cad(self):
-        """仅连接CAD，不新建图形"""
-        try:
-            self.view.status_lbl.config(text="正在连接 AutoCAD...")
-            self.view.update()
-            
-            self.acad = find_autocad()
-            if not self.acad:
-                raise RuntimeError("无法获取 AutoCAD 对象。")
-            
-            # 确保CAD窗口可见
-            self.acad.Visible = True
-            
-            # 检查是否有活动文档
-            if not self.acad.ActiveDocument:
-                messagebox.showwarning("提醒", "AutoCAD 已连接，但没有活动文档。请打开或创建一个图形文件。")
-                self.view.status_lbl.config(text="已连接到 AutoCAD (无活动文档)")
-            else:
-                self.view.status_lbl.config(text="已成功连接到 AutoCAD")
-                messagebox.showinfo("成功", "已成功连接到 AutoCAD！")
-        except Exception as e:
-            self.view.status_lbl.config(text=f"错误: {e}")
-            messagebox.showerror("连接错误", str(e))
-
-    def _on_init_cad(self):
-        """连接CAD并初始化（新建图形、加载样板、加载LISP文件）"""
-        if not self.model.last_dir:
-            messagebox.showwarning("提醒", "请先加载 LISP 目录。")
-            return
-
-        primary_template = filedialog.askopenfilename(
-            title="选择 AutoCAD 样板 (DWT)",
-            filetypes=[("AutoCAD 样板", "*.dwt")]
-        )
-        if not primary_template: return
-
-        backup_template = r"C:\Users\fanzhou\AppData\Local\Autodesk\AutoCAD 2021\R24.0\chs\Template\LISP图样.dwt"
-
-        try:
-            self.view.status_lbl.config(text="正在连接 AutoCAD...")
-            self.view.update()
-            
-            self.acad = find_autocad()
-            if not self.acad: raise RuntimeError("无法获取 AutoCAD 对象。")
-            
-            # 始终尝试新建基于样板的图形
-            self.view.status_lbl.config(text="正在创建基于样板的新图形...")
-            self.view.update()
-            
-            doc = apply_template_with_fallback(self.acad, primary_template, backup_template)
-            
-            # 如果新建失败，给予明确提醒
-            if not doc:
-                msg = "新建图形失败。请检查 AutoCAD 是否弹出了未关闭的对话框（如字体选择），关闭后重试。"
-                self.view.status_lbl.config(text="初始化失败。")
-                messagebox.showerror("样板应用失败", msg)
-                return
-            
-            # 激活新文档
-            doc.Activate()
-            
-            # 配置打印设置（应用到当前文档的布局）
-            if HAS_PRINT_MANAGER:
-                try:
-                    configure_print_settings(doc)
-                except:
-                    pass
-            
-            # 加载 LISP
-            file_count = len(self.model.files_data)
-            self.view.status_lbl.config(text=f"正在注册 {file_count} 个 LISP 文件 (autoload)...")
-            self.view.update()
-            
-            success_count = 0
-            for file_path, lisp_file_obj in self.model.files_data.items():
-                try:
-                    # 传入解析到的函数列表，以便构建 autoload 命令列表
-                    if load_single_lisp_file(doc, file_path, functions=lisp_file_obj.functions):
-                        success_count += 1
-                except: continue
-                time.sleep(0.3)
-            
-            self.view.status_lbl.config(text=f"完成！已在新图形中加载 {success_count} 个文件。")
-            messagebox.showinfo("成功", f"新图形已创建并完成初始化！\n共加载 {success_count} 个 LISP 文件。")
-        except Exception as e:
-            self.view.status_lbl.config(text=f"错误: {e}")
-            messagebox.showerror("初始化错误", str(e))
-
-    def _on_refresh(self):
-        if self.model.last_dir: self._load_directory(self.model.last_dir)
-
-    def _refresh_tree(self):
-        self.view.tree.delete(*self.view.tree.get_children())
-        for path in self.model.files_data.keys():
-            self.view.tree.insert("", tk.END, text=os.path.basename(path), values=(path,))
-
-    def _on_select_file(self, event):
-        sel = self.view.tree.selection()
-        if not sel: return
-        path = self.view.tree.item(sel[0], "values")[0]
-        lfile = self.model.files_data.get(path)
-        if lfile:
-            self.model.current_file = lfile
-            self.view.lbl_file_name.config(text=lfile.name)
-            
-            # 根据文件名设置文档说明
-            file_name = os.path.splitext(lfile.name)[0]
-            if file_name == "JZM_短尾M24_基准模":
-                doc = "短尾M24基准模绘图程序\n\n参数说明：\n"
-                doc += "r0: 曲率半径\n"
-                doc += "a0: 口径(直径)\n"
-                doc += "t0: 边厚\n"
-                doc += "scale_str: 比例\n"
-                doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
-                doc += "custom_tech_text: 自定义技术要求内容\n"
-                doc += "slot_choice: 开槽方式 (0: 都不开槽, 1: 凹模, 2: 凸模, 3: 都开)"
-            elif file_name == "JZM_锥度_基准模":
-                doc = "锥度基准模绘图程序\n\n参数说明：\n"
-                doc += "r0: 曲率半径\n"
-                doc += "a0: 口径(直径)\n"
-                doc += "scale_str: 比例\n"
-                doc += "t0: 边厚\n"
-                doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
-                doc += "custom_tech_text: 自定义技术要求内容\n"
-                doc += "slot_choice: 开槽方式 (0: 都不开槽, 1: 凹模, 2: 凸模, 3: 都开)"
-            elif file_name in ["DWA_短尾凹", "DWT_短尾凸", "XZA_小锥度凹", "XZT_小锥度凸"]:
-                name_map = {
-                    "DWA_短尾凹": "短尾凹模",
-                    "DWT_短尾凸": "短尾凸模",
-                    "XZA_小锥度凹": "小锥度凹模",
-                    "XZT_小锥度凸": "小锥度凸模"
-                }
-                doc = f"{name_map.get(file_name)}绘图程序\n\n参数说明：\n"
-                doc += "tool_type: 工装类型 (1-5)\n"
-                doc += "r0: 曲率半径\n"
-                doc += "a0: 口径(直径)\n"
-                if file_name == "DWA_短尾凹":
-                    doc += "t0: 边厚"
-                else:
-                    doc += "t0: 总厚度"
-            elif file_name == "XBA_下摆凹":
-                doc = "下摆凹模绘图程序\n\n参数说明：\n"
-                doc += "tool_type: 工装类型 (1-2)\n"
-                doc += "r0: 曲率半径\n"
-                doc += "a0: 口径(直径)\n"
-                doc += "t0: 平台宽度\n"
-                doc += "b0: 柄长\n"
-                doc += "tech_choice: 技术要求选择 (1: 默认, 2: 自定义)\n"
-                doc += "custom_tech_text: 自定义技术要求内容"
-            else:
-                doc = self.model.get_doc_for_file(path)
-            
-            self.view.txt_docs.delete("1.0", tk.END)
-            self.view.txt_docs.insert(tk.END, doc)
-            self._update_function_list(lfile)
-
-    def _update_function_list(self, lfile: LispFile):
-        for w in self.view.func_scroll_frame.winfo_children(): w.destroy()
-        fs = self.view.font_size_base
-        if not lfile.functions:
-            ttk.Label(self.view.func_scroll_frame, text="未检测到 c: 命令。", font=("Segoe UI", fs)).pack(pady=20)
-            return
-        
-        # 显示该文件中的所有 c: 函数
-        for func in lfile.functions:
-            if func.name.lower().startswith("c:"):
-                f = ttk.Frame(self.view.func_scroll_frame, padding=10)
-                f.pack(fill=tk.X, expand=True)
-                sig = f"{func.name}"
-                ttk.Label(f, text=sig, font=("Segoe UI", fs)).pack(side=tk.LEFT)
-                btn = ttk.Button(f, text="🚀 执行", style="Accent.TButton", 
-                                 command=lambda f_obj=func: self._on_execute_click(f_obj))
-                btn.pack(side=tk.RIGHT, padx=20)
-
-    def _on_save_docs(self):
-        if self.model.current_file:
-            doc = self.view.txt_docs.get("1.0", tk.END).strip()
-            self.model.save_doc_for_file(self.model.current_file.path, doc)
-            messagebox.showinfo("成功", "文档已保存！")
-
-    def _ensure_cad_connection(self):
-        """确保CAD连接，如果未连接则自动连接"""
-        # 尝试最多2次连接
-        for attempt in range(2):
+    def load_p(self):
+        if os.path.exists(self.p_file):
             try:
-                # 检查是否已经有有效的连接
-                if self.acad:
-                    try:
-                        # 尝试访问ActiveDocument来验证连接是否有效
-                        doc = self.acad.ActiveDocument
-                        if doc:
-                            return True
-                    except Exception:
-                        # 连接已失效，清除旧连接
-                        self.acad = None
-                        continue
-                
-                # 尝试连接到AutoCAD
-                self.view.status_lbl.config(text="正在连接 AutoCAD...")
-                self.view.update()
-                
-                self.acad = find_autocad()
-                if not self.acad:
-                    raise RuntimeError("无法获取 AutoCAD 对象。")
-                
-                # 确保CAD窗口可见
+                with open(self.p_file, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
+                    for k, v in d.items(): 
+                        if k in self.inputs: self.inputs[k].set(v)
+            except: pass
+
+    def save_p(self):
+        try:
+            with open(self.p_file, 'w', encoding='utf-8') as f:
+                json.dump({k: v.get() for k, v in self.inputs.items()}, f, ensure_ascii=False, indent=2)
+        except: pass
+
+    def _setup(self):
+        f = ttk.Frame(self, padding=30); f.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(f, text=f"命令: {self.func.name}", font=("Segoe UI", self.fs, "bold")).pack(pady=(0, 20))
+        for p in self.func.params:
+            row = ttk.Frame(f); row.pack(fill=tk.X, pady=5)
+            ttk.Label(row, text=f"{p}:", width=12).pack(side=tk.LEFT)
+            var = tk.BooleanVar() if 'flag' in p.lower() or 'is-' in p.lower() else tk.StringVar()
+            if isinstance(var, tk.BooleanVar): ttk.Checkbutton(row, variable=var).pack(side=tk.LEFT)
+            else: ttk.Entry(row, textvariable=var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.inputs[p] = var
+        b_f = ttk.Frame(f); b_f.pack(side=tk.BOTTOM, fill=tk.X, pady=20)
+        ttk.Button(b_f, text="执行", command=self._run).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(b_f, text="取消", command=self.destroy).pack(side=tk.RIGHT)
+
+    def _run(self):
+        self.save_p(); self.on_exec(self.func, {k: v.get() for k, v in self.inputs.items()}); self.destroy()
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__(); self.title("AutoCAD LISP 智能管理 (v3.0)"); self.geometry("1600x1000"); self.fs = 20
+        self.acad = None; self.model = Model(); self.last_save_meta = None; self._setup(); self._load(self.model.last_dir)
+
+    def _setup(self):
+        t = ttk.Frame(self, padding=10); t.pack(side=tk.TOP, fill=tk.X)
+        for text, cmd in [("📂 目录", self._on_dir), ("🔌 连接", self._on_conn), ("� 新建", self._on_new), ("📂 加载", self._on_lisp), ("💾 保存", self._on_save_dwg), ("🖨️ 打印", self._on_print), ("🔄 刷新", self._on_ref)]:
+            ttk.Button(t, text=text, command=cmd).pack(side=tk.LEFT, padx=5)
+        self.status = ttk.Label(self, text="就绪", relief=tk.SUNKEN, padding=5); self.status.pack(side=tk.BOTTOM, fill=tk.X)
+        p = ttk.PanedWindow(self, orient=tk.HORIZONTAL); p.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.tree = ttk.Treeview(p, show="tree", selectmode="browse"); p.add(self.tree, weight=1)
+        self.tree.bind("<<TreeviewSelect>>", self._on_sel)
+        df = ttk.Frame(p, padding=20); p.add(df, weight=4)
+        self.title_lbl = ttk.Label(df, text="选择文件", font=("Segoe UI", self.fs+5, "bold")); self.title_lbl.pack(anchor=tk.W)
+        self.docs = tk.Text(df, height=5, font=("Segoe UI", self.fs)); self.docs.pack(fill=tk.X, pady=10)
+        ttk.Button(df, text="💾 保存文档", command=self._on_save_doc).pack(anchor=tk.E)
+        self.f_list = ttk.Frame(df); self.f_list.pack(fill=tk.BOTH, expand=True, pady=10)
+
+    def _on_dir(self):
+        d = filedialog.askdirectory(initialdir=self.model.last_dir)
+        if d: self._load(d)
+
+    def _load(self, d):
+        self.model.last_dir = d; self.model.save_cfg("last_dir", d); self.model.scan(d)
+        self.tree.delete(*self.tree.get_children())
+        for path in self.model.data: self.tree.insert("", tk.END, text=os.path.basename(path), values=(path,))
+        self.status.config(text=f"已加载: {d}")
+
+    def _on_conn(self):
+        try:
+            self.acad = find_autocad(); self.acad.Visible = True
+            self.status.config(text="AutoCAD 已连接")
+        except Exception as e: messagebox.showerror("错误", str(e))
+
+    def _ensure_acad(self):
+        """确保执行前有可用 CAD 连接。"""
+        if self.acad:
+            try:
                 self.acad.Visible = True
-                
-                # 检查是否有活动文档
-                try:
-                    doc = self.acad.ActiveDocument
-                    if not doc:
-                        messagebox.showwarning("提醒", "AutoCAD 已连接，但没有活动文档。请打开或创建一个图形文件。")
-                        return False
-                    
-                    self.view.status_lbl.config(text="已成功连接到 AutoCAD")
-                    return True
-                except Exception as e:
-                    messagebox.showwarning("提醒", f"AutoCAD 已连接，但无法访问活动文档: {e}")
-                    return False
-                    
-            except Exception as e:
+                return True
+            except Exception:
                 self.acad = None
-                if attempt == 0:
-                    # 第一次尝试失败，继续尝试
-                    continue
-                else:
-                    # 第二次尝试仍然失败
-                    self.view.status_lbl.config(text=f"连接错误: {e}")
-                    messagebox.showerror("连接错误", f"无法连接到 AutoCAD: {e}")
-                    return False
-        
-        return False
+        try:
+            self.acad = find_autocad()
+            self.acad.Visible = True
+            self.status.config(text="AutoCAD 已自动连接")
+            return True
+        except Exception as e:
+            messagebox.showerror("错误", f"无法连接 AutoCAD: {e}")
+            return False
 
-    def _on_execute_click(self, func: LispFunction):
-        # 确保CAD连接
-        if not self._ensure_cad_connection():
-            return
-        
-        # 检查当前选中的文件是否有对应的UI模块
-        if self.model.current_file:
-            file_name = os.path.splitext(self.model.current_file.name)[0]
-            ui_module = self._get_ui_module(file_name)
-            if ui_module:
-                self._show_custom_ui(ui_module)
+    def _on_new(self):
+        try:
+            tmpl = filedialog.askopenfilename(filetypes=[("DWT", "*.dwt")])
+            if not tmpl: return
+            self.acad = find_autocad(); doc = apply_template(self.acad, tmpl, None)
+            doc.Activate(); configure_print_settings(doc)
+            self.status.config(text="新图形已创建")
+        except Exception as e: messagebox.showerror("错误", str(e))
+
+    def _on_lisp(self):
+        if not self.acad: return
+        try:
+            doc = self.acad.ActiveDocument; count = 0
+            for path, obj in self.model.data.items():
+                if load_single_lisp_file(doc, path, obj.functions): count += 1
+            self.status.config(text=f"已加载 {count} 个 LISP")
+        except Exception as e: messagebox.showerror("错误", str(e))
+
+    def _on_ref(self): self._load(self.model.last_dir)
+
+    def _on_sel(self, e):
+        sel = self.tree.selection()
+        if not sel: return
+        path = self.tree.item(sel[0], "values")[0]; obj = self.model.data.get(path)
+        if not obj: return
+        self.model.curr = obj; self.title_lbl.config(text=obj.name)
+        self.docs.delete("1.0", tk.END); self.docs.insert(tk.END, self.model.get_doc(path))
+        for w in self.f_list.winfo_children(): w.destroy()
+        for f in (obj.functions or []):
+            if f.name.lower().startswith("c:"):
+                row = ttk.Frame(self.f_list); row.pack(fill=tk.X, pady=2)
+                ttk.Label(row, text=f.name).pack(side=tk.LEFT)
+                ttk.Button(row, text="🚀 执行", command=lambda f_obj=f: self._on_exec_click(f_obj)).pack(side=tk.RIGHT)
+
+    def _on_save_doc(self):
+        if self.model.curr: self.model.save_doc(self.model.curr.path, self.docs.get("1.0", tk.END).strip())
+
+    def _on_exec_click(self, f):
+        # 这里仅负责打开参数 UI，不执行 CAD 相关动作。
+        name = os.path.splitext(self.model.curr.name)[0]
+        if name in HAS_UI:
+            dialog = tk.Toplevel(self); dialog.title(f"参数: {name}")
+            frame = ttk.Frame(dialog, padding=30); frame.pack(fill=tk.BOTH, expand=True)
+            HAS_UI[name](dialog, self._exec_custom, self.fs).create_ui(frame)
+        else: ExecutionDialog(self, f, self._exec_generic, self.fs)
+
+    def _exec_generic(self, f, p):
+        try:
+            if not self._ensure_acad():
                 return
-        
-        # 如果没有自定义UI，使用默认的参数输入对话框
-        ExecutionDialog(self.view, func, self._execute_in_cad, self.view.font_size_base)
+            doc = getattr(self.acad, "ActiveDocument", None)
+            if not doc:
+                messagebox.showwarning("提醒", "请先在 CAD 中新建或打开图形，再执行。")
+                return
+            args = []
+            for k in f.params:
+                v = p.get(k)
+                if isinstance(v, bool): args.append("T" if v else "nil")
+                elif str(v).replace('.','',1).isdigit(): args.append(str(v))
+                else: args.append(f'"{v}"')
+            fname = self._get_fname(f.name.replace("c:",""), p)
+            self._remember_save_meta(f.name.replace("c:", "").lower(), p, fname)
+            run_lisp(self.acad, f.name, args, len(f.params)>0)
+        except Exception as e: messagebox.showerror("错误", str(e))
 
-    def _get_ui_module(self, file_name: str):
-        """根据文件名获取对应的UI模块"""
-        ui_modules = {
-            "DWA_短尾凹": (HAS_DWA, DWA_短尾凹_UI),
-            "DWT_短尾凸": (HAS_DWT, DWT_短尾凸_UI),
-            "JZM_短尾M24_基准模": (HAS_JZM1, JZM_短尾M24_基准模_UI),
-            "JZM_锥度_基准模": (HAS_JZM2, JZM_锥度_基准模_UI),
-            "XBA_下摆凹": (HAS_XBA, XBA_下摆凹_UI),
-            "XZA_小锥度凹": (HAS_XZA, XZA_小锥度凹_UI),
-            "XZT_小锥度凸": (HAS_XZT, XZT_小锥度凸_UI),
-        }
-        
-        if file_name in ui_modules:
-            has_module, ui_class = ui_modules[file_name]
-            if has_module:
-                return ui_class
-        return None
-
-    def _show_custom_ui(self, ui_class):
-        """显示自定义UI对话框"""
-        dialog = tk.Toplevel(self.view)
-        dialog.title(f"参数输入 - {ui_class.__name__.replace('_UI', '')}")
-        dialog.transient(self.view)
-        dialog.grab_set()
-        
-        # 创建UI
-        ui_instance = ui_class(dialog, self._execute_custom_function, self.view.font_size_base)
-        frame = ttk.Frame(dialog, padding="30")
-        frame.pack(fill=tk.BOTH, expand=True)
-        ui_instance.create_ui(frame)
-        
-    def _execute_custom_function(self, function_name: str, params: Dict[str, Any]):
-        """使用自定义UI执行LISP函数"""
-        # 确保CAD连接
-        if not self._ensure_cad_connection():
-            return
+    def _exec_custom(self, f_name, p):
         try:
-            self.view.status_lbl.config(text=f"正在执行 {function_name}...")
-            
-            # 如果是 c: 命令且我们需要传参，则优先调用同名的普通函数 (不带 c: 前缀)
-            # 例如：Python UI 传入 "c:xba"，我们查找 "xba"
-            target_func_name = function_name
-            if function_name.lower().startswith("c:"):
-                potential_name = function_name[2:]
-                # 检查此文件是否包含该普通函数定义
-                if self.model.current_file and self.model.current_file.functions:
-                    for f in self.model.current_file.functions:
-                        if f.name.lower() == potential_name.lower() and f.params:
-                            target_func_name = f.name
-                            break
-            
-            # 获取该函数的定义
-            func_def = None
-            if self.model.current_file and self.model.current_file.functions:
-                for f in self.model.current_file.functions:
-                    if f.name.lower() == target_func_name.lower():
-                        func_def = f
-                        break
-            
-            # 如果 LISP 函数定义中包含参数，则启用带参调用模式
-            is_parameterized = func_def and len(func_def.params) > 0
-            
-            # 根据不同的函数构建参数列表
-            args_list = []
-            # 注意：这里判断函数名时使用 target_func_name (可能是不带 c: 的版本)
-            clean_name = target_func_name.lower()
-            if clean_name.startswith("c:"): clean_name = clean_name[2:]
+            if not self._ensure_acad():
+                return
+            doc = getattr(self.acad, "ActiveDocument", None)
+            if not doc:
+                messagebox.showwarning("提醒", "请先在 CAD 中新建或打开图形，再执行。")
+                return
+            clean = f_name.lower().replace("c:", "")
+            args = self._build_args(clean, p)
+            fname = self._get_fname(clean, p)
+            self._remember_save_meta(clean, p, fname)
+            # 自定义参数模式下，优先调用核心函数（如 xbt），避免对 c: 命令传参导致异常
+            exec_name = clean if f_name.lower().startswith("c:") else f_name
+            run_lisp(self.acad, exec_name, args, True)
+        except Exception as e: messagebox.showerror("错误", str(e))
 
-            if clean_name in ["dwa", "dwt", "xza", "xzt"]:
-                # 这些函数的参数顺序：r0, a0, t0, tool_type
-                args_list = [
-                    str(params.get("r0", "")),
-                    str(params.get("a0", "")),
-                    str(params.get("t0", "")),
-                    f'"{params.get("tool_type", "1")}"'
-                ]
-            elif clean_name == "jzm1" or clean_name == "jzm2":
-                if clean_name == "jzm1":
-                    args_list = [
-                        str(params.get("r0", "")),
-                        str(params.get("a0", "")),
-                        str(params.get("t0", "")),
-                        f'"{params.get("scale_str", "1:1")}"',
-                        str(params.get("tech_choice", "1")),
-                        f'"{params.get("custom_tech_text", "")}"',
-                        str(params.get("slot_choice", "0"))
-                    ]
-                else: # jzm2
-                    args_list = [
-                        str(params.get("r0", "")),
-                        str(params.get("a0", "")),
-                        f'"{params.get("scale_str", "1:1")}"',
-                        str(params.get("t0", "")),
-                        str(params.get("tech_choice", "1")),
-                        f'"{params.get("custom_tech_text", "")}"',
-                        str(params.get("slot_choice", "0"))
-                    ]
-            elif clean_name == "xba":
-                args_list = [
-                    str(params.get("r0", "")),
-                    str(params.get("a0", "")),
-                    str(params.get("t0", "")),
-                    str(params.get("b0", "")),
-                    f'"{params.get("tool_type", "1")}"',
-                    str(params.get("tech_choice", "1")),
-                    f'"{params.get("custom_tech_text", "")}"'
-                ]
-            
-            # 保存绘图参数用于命名和打印
-            self._save_drawing_params(clean_name, params)
-            
-            run_lisp_function(self.acad, target_func_name, args_list, is_parameterized)
-            args_str = " ".join(args_list)
-            self.view.status_lbl.config(text=f"已发送命令: ({target_func_name} {args_str})")
-        except Exception as e:
-            messagebox.showerror("CAD 错误", str(e))
+    def _build_args(self, name, p):
+        def abs_v(k): return str(abs(float(p.get(k, 0))))
+        if name in ["dwa", "dwt", "xza", "xzt"]: return [abs_v("r0"), abs_v("a0"), abs_v("t0"), f'"{p.get("tool_type", "1")}"']
+        if name in ["jzm1", "jzm2"]:
+            res = [abs_v("r0"), abs_v("a0")]
+            if name == "jzm1": res.append(abs_v("t0"))
+            res.append(f'"{p.get("scale_str", "1:1")}"')
+            if name == "jzm2": res.append(abs_v("t0"))
+            res.extend([p.get("tech_choice", "1"), f'"{p.get("custom_tech_text", "")}"', p.get("slot_choice", "0")])
+            return res
+        if name in ["xba", "xbt"]: return [abs_v("r0"), abs_v("a0"), abs_v("t0"), abs_v("b0"), f'"{p.get("tool_type", "1")}"', p.get("tech_choice", "1"), f'"{p.get("custom_tech_text", "")}"']
+        if name in ["mja", "mjt"]: return [abs_v("r0"), abs_v("a0"), abs_v("t0")]
+        return []
 
-    def _save_drawing_params(self, func_name: str, params: Dict[str, Any]):
-        """保存绘图参数用于命名和打印"""
-        self.current_drawing_params = {
-            "func_name": func_name,
-            "r0": params.get("r0", ""),
-            "a0": params.get("a0", ""),
-            "t0": params.get("t0", ""),
-            "b0": params.get("b0", ""),
-            "tool_type": params.get("tool_type", ""),
-        }
-        
-        # 获取图号前缀
-        if func_name in ["dwa", "dwt", "xza", "xzt"]:
-            self.current_drawing_params["drawing_prefix"] = func_name.upper()
-        elif func_name == "jzm1":
-            self.current_drawing_params["drawing_prefix"] = "JZM"
-        elif func_name == "jzm2":
-            self.current_drawing_params["drawing_prefix"] = "JZM"
-        elif func_name == "xba":
-            self.current_drawing_params["drawing_prefix"] = "XBA"
+    def _get_fname(self, name, p):
+        pref = self._get_drawing_type(name, p)
+        try: return generate_filename(float(p.get("r0", 0)), float(p.get("a0", 0)), pref or "DRAWING")
+        except: return None
 
-    def _get_generated_filename(self) -> str:
-        """根据当前绘图参数生成文件名"""
-        if not HAS_FILENAME_GENERATOR:
-            return None
-        
+    def _get_drawing_type(self, name, p):
+        pref = {"mja": "XPMJM", "mjt": "XPMJM", "jzm1": "JZM", "jzm2": "JZM"}.get(name)
+        if pref:
+            return pref
+        tt = p.get("tool_type", "1")
+        if name in ["dwa", "dwt", "xza", "xzt"]:
+            return {"1": "GPMJX", "2": "GPMXJ", "3": "QX", "4": "QZ", "5": "QP"}.get(tt, "DRAWING")
+        if name in ["xba", "xbt"]:
+            return {"1": "XPMJM", "2": "XJMJM"}.get(tt, "DRAWING")
+        return "DRAWING"
+
+    def _remember_save_meta(self, func_name, params, fallback_name=None):
         try:
-            radius = float(self.current_drawing_params.get("r0", 0))
-            chord_length = float(self.current_drawing_params.get("a0", 0))
-            drawing_type = self.current_drawing_params.get("drawing_prefix", "DRAWING")
-            
-            return generate_filename(radius, chord_length, drawing_type)
-        except Exception as e:
-            print(f"生成文件名失败: {e}")
-            return None
+            self.last_save_meta = {
+                "name": fallback_name,
+                "radius": float(params.get("r0", 0)),
+                "chord_length": float(params.get("a0", 0)),
+                "drawing_type": self._get_drawing_type(func_name, params),
+            }
+        except Exception:
+            self.last_save_meta = {"name": fallback_name}
 
-    def _execute_in_cad(self, func: LispFunction, params: Dict[str, Any]):
-        # 确保CAD连接
-        if not self._ensure_cad_connection():
-            return
-        try:
-            # 逻辑同 _execute_custom_function：如果是带参调用，优先寻找不带 c: 的核心函数
-            target_func_name = func.name
-            if func.name.lower().startswith("c:") and func.params:
-                # 这种情况通常不会发生，因为我们的 LispParser 现在会解析出核心函数
-                pass 
-            elif not func.name.lower().startswith("c:"):
-                # 已经是核心函数名，直接使用
-                pass
-            
-            self.view.status_lbl.config(text=f"正在执行 {target_func_name}...")
-            args_list = []
-            for p in func.params:
-                v = params.get(p)
-                if isinstance(v, bool): 
-                    args_list.append("T" if v else "nil")
-                elif isinstance(v, str) and v.replace('.','',1).isdigit(): 
-                    args_list.append(str(v))
-                else: 
-                    args_list.append(f'"{v}"')
-            
-            is_parameterized = len(func.params) > 0
-            run_lisp_function(self.acad, target_func_name, args_list, is_parameterized)
-            args_str = " ".join(args_list)
-            self.view.status_lbl.config(text=f"已发送命令: ({target_func_name} {args_str})")
-        except Exception as e:
-            messagebox.showerror("CAD 错误", str(e))
-    
     def _on_print(self):
-        """执行打印，保存PDF到P:\工装绘图文件"""
-        if not self.acad:
-            messagebox.showwarning("提醒", "请先连接 AutoCAD。")
-            return
-        
+        if self.acad: plot_paper_space(self.acad.ActiveDocument)
+
+    def _on_save_dwg(self):
         try:
+            if not self._ensure_acad():
+                return
             doc = self.acad.ActiveDocument
             if not doc:
-                messagebox.showwarning("提醒", "找不到活动文档。")
+                messagebox.showwarning("提醒", "请先在 CAD 中新建或打开图形。")
                 return
-            
-            self.view.status_lbl.config(text="正在打印...")
-            self.view.update()
-            
-            if HAS_PRINT_MANAGER:
-                # 获取生成的文件名
-                generated_filename = self._get_generated_filename()
-                output_path = plot_paper_space(doc, output_dir="P:\\工装绘图文件", custom_filename=generated_filename)
-                if output_path:
-                    self.view.status_lbl.config(text=f"任务已发送: {os.path.basename(output_path)}")
-                    messagebox.showinfo("打印任务已发送", f"AutoCAD 正在后台生成 PDF。\n文件名将为:\n{os.path.basename(output_path)}\n\n请在 P:\\工装绘图文件 文件夹中查看结果。")
-                else:
-                    self.view.status_lbl.config(text="发送打印任务失败")
-                    messagebox.showerror("打印错误", "无法向 AutoCAD 发送打印任务。")
-            else:
-                messagebox.showwarning("提醒", "打印模块未加载。")
-                
+
+            meta = self.last_save_meta or {}
+            path = save_dwg(
+                doc,
+                out_dir="P:\\工装绘图文件",
+                name=None,
+                radius=meta.get("radius"),
+                chord_length=meta.get("chord_length"),
+                drawing_type=meta.get("drawing_type"),
+            )
+            self.status.config(text=f"已保存: {os.path.basename(path)}")
+            messagebox.showinfo("保存成功", f"DWG 已保存:\n{path}")
         except Exception as e:
-            self.view.status_lbl.config(text=f"打印错误: {e}")
-            messagebox.showerror("打印错误", str(e))
+            messagebox.showerror("保存失败", str(e))
 
-class AppModel:
+class Model:
     def __init__(self):
-        self.last_dir = ""
-        self.files_data: Dict[str, LispFile] = {}
-        self.current_file: Optional[LispFile] = None
-        self.config_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr")
-        os.makedirs(self.config_dir, exist_ok=True)
-        self.config_path = os.path.join(self.config_dir, "config.json")
-        self.docs_path = os.path.join(self.config_dir, "docs.json")
-        self._load_configs()
-        self._load_docs_persistence()
+        self.cfg_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr"); os.makedirs(self.cfg_dir, exist_ok=True)
+        self.cfg_p = os.path.join(self.cfg_dir, "config.json"); self.docs_p = os.path.join(self.cfg_dir, "docs.json")
+        try: self.cfg = json.load(open(self.cfg_p))
+        except: self.cfg = {}
+        try: self.docs_d = json.load(open(self.docs_p))
+        except: self.docs_d = {}
+        self.last_dir = self.cfg.get("last_dir", "."); self.data = {}; self.curr = None
 
-    def _load_configs(self):
-        try:
-            with open(self.config_path, 'r') as f: self.config = json.load(f)
-        except: self.config = {}
+    def save_cfg(self, k, v): self.cfg[k] = v; json.dump(self.cfg, open(self.cfg_p, 'w'))
+    def scan(self, d):
+        self.data = {}
+        for r, _, fs in os.walk(d):
+            for f in fs:
+                if f.lower().endswith(('.lisp', '.lsp')):
+                    p = os.path.join(r, f); self.data[p] = type('obj', (), {'path':p, 'name':f, 'functions':LispParser.parse_file(p)})
 
-    def _load_docs_persistence(self):
-        try:
-            with open(self.docs_path, 'r') as f: self.docs_data = json.load(f)
-        except: self.docs_data = {}
+    def get_doc(self, p): return self.docs_d.get(p, self.data[p].functions[0].docstring if self.data[p].functions else "暂无说明")
+    def save_doc(self, p, d): self.docs_d[p] = d; json.dump(self.docs_d, open(self.docs_p, 'w'))
 
-    def get_config(self, key, default): return self.config.get(key, default)
-    def save_config(self, key, value):
-        self.config[key] = value
-        with open(self.config_path, 'w') as f: json.dump(self.config, f)
-
-    def scan_directory(self, dir: str):
-        self.files_data = {}
-        for root, _, files in os.walk(dir):
-            for file in files:
-                if file.lower().endswith('.lisp') or file.lower().endswith('.lsp'):
-                    path = os.path.join(root, file)
-                    funcs = LispParser.parse_file(path)
-                    self.files_data[path] = LispFile(path=path, name=file, functions=funcs)
-
-    def get_doc_for_file(self, path: str) -> str:
-        if path in self.docs_data: return self.docs_data[path]
-        lfile = self.files_data.get(path)
-        if lfile and lfile.functions: return lfile.functions[0].docstring or "暂无说明。"
-        return "暂无说明。"
-
-    def save_doc_for_file(self, path: str, doc: str):
-        self.docs_data[path] = doc
-        with open(self.docs_path, 'w') as f: json.dump(self.docs_data, f)
-
-if __name__ == "__main__":
-    app_view = AppView()
-    app_controller = AppController(AppModel(), app_view)
-    app_view.mainloop()
+if __name__ == "__main__": App().mainloop()

@@ -1,4 +1,3 @@
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict, Any, Callable
@@ -6,23 +5,21 @@ import json
 import os
 
 TOOL_TYPES = [
-    ("1", "抛光模基模修盘"),
-    ("2", "抛光模修盘基模"),
-    ("3", "球面低抛细磨盘"),
-    ("4", "球面低抛粘盘"),
-    ("5", "球面低抛抛盘")
+    ("1", "抛光模基模"),
+    ("2", "精磨模基模")
 ]
+TECH_OPTIONS = [("1", "使用默认技术要求"), ("2", "自定义技术要求")]
 
-class DWA_短尾凹_UI:
+class XBT_下摆凸_UI:
     def __init__(self, parent, on_execute: Callable, font_size: int = 12):
         self.parent = parent
         self.on_execute = on_execute
         self.font_size = font_size
-        self.large_font_size = int(font_size * 1.6)
+        self.large_font_size = int(font_size * 1)
         self.inputs = {}
         self.config_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr")
         os.makedirs(self.config_dir, exist_ok=True)
-        self.param_file = os.path.join(self.config_dir, "DWA_短尾凹_params.json")
+        self.param_file = os.path.join(self.config_dir, "XBT_下摆凸_params.json")
         
     def load_params(self):
         try:
@@ -41,14 +38,7 @@ class DWA_短尾凹_UI:
         try:
             params = {}
             for key, var in self.inputs.items():
-                if isinstance(var, tk.StringVar):
-                    params[key] = var.get()
-                elif isinstance(var, tk.IntVar):
-                    params[key] = var.get()
-                elif isinstance(var, tk.BooleanVar):
-                    params[key] = var.get()
-                else:
-                    params[key] = var.get()
+                params[key] = var.get()
             with open(self.param_file, 'w', encoding='utf-8') as f:
                 json.dump(params, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -57,8 +47,12 @@ class DWA_短尾凹_UI:
     def create_ui(self, frame):
         f_large = ("Segoe UI", self.font_size, "bold")
         f_norm = ("Segoe UI", self.font_size)
+        f_option = ("Segoe UI", self.large_font_size)
         
-        ttk.Label(frame, text="短尾凹模参数输入", font=f_large).pack(pady=(0, 20))
+        style = ttk.Style()
+        style.configure("Large.TRadiobutton", font=f_option)
+        
+        ttk.Label(frame, text="下摆凸模参数输入", font=f_large).pack(pady=(0, 20))
         
         tool_frame = ttk.Frame(frame)
         tool_frame.pack(fill=tk.X, pady=10)
@@ -92,11 +86,33 @@ class DWA_短尾凹_UI:
         ttk.Entry(t0_frame, textvariable=t0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["t0"] = t0_var
         
+        b0_frame = ttk.Frame(param_frame)
+        b0_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(b0_frame, text="柄长(b0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        b0_var = tk.StringVar()
+        ttk.Entry(b0_frame, textvariable=b0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.inputs["b0"] = b0_var
+        
+        tech_frame = ttk.Frame(param_frame)
+        tech_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(tech_frame, text="技术要求:", width=15, font=f_norm).pack(side=tk.LEFT)
+        tech_var = tk.StringVar(value="1")
+        self.inputs["tech_choice"] = tech_var
+        for val, text in TECH_OPTIONS:
+            ttk.Radiobutton(tech_frame, text=text, variable=tech_var, value=val, style="Large.TRadiobutton").pack(side=tk.LEFT, padx=10)
+        
+        custom_tech_frame = ttk.Frame(param_frame)
+        custom_tech_frame.pack(fill=tk.X, pady=10)
+        ttk.Label(custom_tech_frame, text="自定义技术要求内容:", width=15, font=f_norm).pack(side=tk.LEFT)
+        custom_tech_var = tk.StringVar()
+        self.inputs["custom_tech_text"] = custom_tech_var
+        ttk.Entry(custom_tech_frame, textvariable=custom_tech_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=20)
         ttk.Button(btn_frame, text="执行", command=self._on_run, style="Accent.TButton").pack(side=tk.RIGHT, padx=15)
         
-        # 加载保存的参数
+        # 加载参数
         self.load_params()
         
     def _on_run(self):
@@ -105,12 +121,12 @@ class DWA_短尾凹_UI:
             for key, var in self.inputs.items():
                 values[key] = var.get()
             
-            if not all([values["r0"], values["a0"], values["t0"]]):
-                messagebox.showwarning("警告", "请填写所有参数！")
+            if not all([values["r0"], values["a0"], values["t0"], values["b0"], values["tool_type"]]):
+                messagebox.showwarning("警告", "请填写所有参数并选择工装类型！")
                 return
             
             self.save_params()
             
-            self.on_execute("c:dwa", values)
+            self.on_execute("c:xbt", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

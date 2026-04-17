@@ -1,28 +1,19 @@
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Dict, Any, Callable
 import json
 import os
 
-TOOL_TYPES = [
-    ("1", "抛光模基模修盘"),
-    ("2", "抛光模修盘基模"),
-    ("3", "球面低抛细磨盘"),
-    ("4", "球面低抛粘盘"),
-    ("5", "球面低抛抛盘")
-]
-
-class DWA_短尾凹_UI:
+class MJA_迈均凹_UI:
     def __init__(self, parent, on_execute: Callable, font_size: int = 12):
         self.parent = parent
         self.on_execute = on_execute
         self.font_size = font_size
-        self.large_font_size = int(font_size * 1.6)
+        self.large_font_size = int(font_size * 1)
         self.inputs = {}
         self.config_dir = os.path.join(os.path.expanduser("~"), ".autolisp_mgr")
         os.makedirs(self.config_dir, exist_ok=True)
-        self.param_file = os.path.join(self.config_dir, "DWA_短尾凹_params.json")
+        self.param_file = os.path.join(self.config_dir, "MJA_迈均凹_params.json")
         
     def load_params(self):
         try:
@@ -41,14 +32,7 @@ class DWA_短尾凹_UI:
         try:
             params = {}
             for key, var in self.inputs.items():
-                if isinstance(var, tk.StringVar):
-                    params[key] = var.get()
-                elif isinstance(var, tk.IntVar):
-                    params[key] = var.get()
-                elif isinstance(var, tk.BooleanVar):
-                    params[key] = var.get()
-                else:
-                    params[key] = var.get()
+                params[key] = var.get()
             with open(self.param_file, 'w', encoding='utf-8') as f:
                 json.dump(params, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -58,15 +42,7 @@ class DWA_短尾凹_UI:
         f_large = ("Segoe UI", self.font_size, "bold")
         f_norm = ("Segoe UI", self.font_size)
         
-        ttk.Label(frame, text="短尾凹模参数输入", font=f_large).pack(pady=(0, 20))
-        
-        tool_frame = ttk.Frame(frame)
-        tool_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(tool_frame, text="工装类型:", width=15, font=f_norm).pack(side=tk.LEFT)
-        tool_var = tk.StringVar(value="1")
-        self.inputs["tool_type"] = tool_var
-        for val, text in TOOL_TYPES:
-            ttk.Radiobutton(tool_frame, text=text, variable=tool_var, value=val).pack(side=tk.LEFT, padx=10)
+        ttk.Label(frame, text="迈均凹模参数输入", font=f_large).pack(pady=(0, 20))
         
         param_frame = ttk.Frame(frame)
         param_frame.pack(fill=tk.X, pady=10)
@@ -96,7 +72,7 @@ class DWA_短尾凹_UI:
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=20)
         ttk.Button(btn_frame, text="执行", command=self._on_run, style="Accent.TButton").pack(side=tk.RIGHT, padx=15)
         
-        # 加载保存的参数
+        # 加载参数
         self.load_params()
         
     def _on_run(self):
@@ -111,6 +87,6 @@ class DWA_短尾凹_UI:
             
             self.save_params()
             
-            self.on_execute("c:dwa", values)
+            self.on_execute("c:mja", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

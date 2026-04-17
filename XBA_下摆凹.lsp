@@ -1,5 +1,5 @@
 (defun xba (r0 a0 t0 b0 tool_type tech_choice custom_tech_text /
-               old_osmode old_cmdecho old_orthomode old_clayer old_attdia old_dimtofl product_name material drawing_prefix)
+               old_osmode old_cmdecho old_orthomode old_clayer old_attdia old_dimtofl product_name material drawing_prefix r3_circle_ent)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
   ;; 保存原始系统变量
@@ -257,11 +257,6 @@
   ;; 标注位置在左侧四等分点向右上方偏移0.5 
   (setq dim_pt1 (list (+ (car left_quarter_pt) 0.5) (+ (cadr left_quarter_pt) 0.5))) 
   (command "dimradius" left_quarter_pt dim_pt1) 
-  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择 
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command pause) 
-  ) 
-
   ;; 2. 标注R3圆弧的半径（标注位置在右侧四等分点向左下方偏移0.5） 
   ;; 计算R3圆弧的圆心（圆心在l_pt10和r_pt10的中点，半径为3） 
   (setq r3_arc_center (list 0 (- (+ 5 t0 b0)))) 
@@ -275,34 +270,30 @@
   ;; 标注位置在右侧四等分点向左下方偏移0.5 
   (setq dim_pt2 (list (- (car right_quarter_pt) 0.5) (- (cadr right_quarter_pt) 0.5))) 
   (command "dimradius" right_quarter_pt dim_pt2) 
-  ;; 如果命令仍在活动（表示需要用户选择），等待用户完成选择 
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command pause) 
-  ) 
-    ;; 恢复尺寸线强制 
+  ;; 恢复尺寸线强制 
   (setvar "dimtofl" old_dimtofl)
 
   ;; 3. 标注l_pt1到r_pt1的水平距离（向上偏移7.5）
   (setq dim_dy3 7.5)
   (setq dim_pt3 (list 0 dim_dy3))
-  (command "dimlinear" l_pt1 r_pt1 "h" "t" "%%c<>" dim_pt3)
+  (command "dimlinear" l_pt1 r_pt1 "h" dim_pt3)
 
   ;; 4. 标注l_pt3到r_pt3的水平距离（向上偏移 11.5）
   (setq dim_dy4 11.5)
   (setq dim_pt4 (list 0 dim_dy4))
-  (command "dimlinear" l_pt3 r_pt3 "h" "t" "%%c<>" dim_pt4)
+  (command "dimlinear" l_pt3 r_pt3 "h" dim_pt4)
 
   ;; 5. 标注l_pt7到r_pt7的水平距离（从r_pt7和l_pt7的中点向上偏移1）
   (setq dim_dy5 1)
   (setq mid_pt57 (list (/ (+ (car l_pt7) (car r_pt7)) 2) (/ (+ (cadr l_pt7) (cadr r_pt7)) 2)))
   (setq dim_pt5 (list (car mid_pt57) (+ (cadr mid_pt57) dim_dy5)))
-  (command "dimlinear" l_pt7 r_pt7 "h" "t" "%%c<>" dim_pt5)
+  (command "dimlinear" l_pt7 r_pt7 "h" dim_pt5)
   
   ;; 6. 标注l_pt10到r_pt10的水平距离（从两点的中点向下偏移11.5）
   (setq dim_dy6 (- 11.5))
   (setq mid_pt610 (list (/ (+ (car l_pt10) (car r_pt10)) 2) (/ (+ (cadr l_pt10) (cadr r_pt10)) 2)))
   (setq dim_pt6 (list (car mid_pt610) (+ (cadr mid_pt610) dim_dy6)))
-  (command "dimlinear" l_pt10 r_pt10 "h" "t" "%%c<>" dim_pt6)
+  (command "dimlinear" l_pt10 r_pt10 "h" dim_pt6)
 
   ;; 7. 标注r_pt2到r_pt5的垂直距离（向右偏移5.5）
   (setq dim_pt7 (list (+ (car r_pt2) 5.5) (/ (+ (cadr r_pt2) (cadr r_pt5)) 2)))
@@ -362,6 +353,7 @@
   ;; 绘制四个同心圆
   ;; 1. 半径3mm的圆
   (command "circle" elevation_view_center 3)
+  (setq r3_circle_ent (entlast))
   
   ;; 2. 从弦左端点到弦右端点的圆弧（替代原来的半径9mm圆）
   ;; 计算弦的位置（距离圆心8mm）
@@ -425,11 +417,6 @@
   ;; 标注弦的右端点到圆心的垂直距离
   (command "dimlinear" chord_start elevation_view_center "v" chord_dim_pt)
   
-  ;; 如果命令仍在活动，等待用户完成选择
-  (while (> (getvar "CMDACTIVE") 0)
-    (command pause)
-  )
-  
   ;; 仰视图其他标注
   (setvar "clayer" "标注线")
   
@@ -438,14 +425,12 @@
   ;; 标注位置：向左上方偏移0.5
   (setq r3_dim_pt (list (- (car elevation_view_center) 0.5) 
                         (+ (cadr elevation_view_center) r3_radius 0.5)))
-  (command "dimdiameter" (list elevation_view_center r3_radius) "t" "%%c<>" r3_dim_pt)
-  
-  ;; 如果命令仍在活动，等待用户完成选择
-  (while (> (getvar "CMDACTIVE") 0)
-    (command pause)
+  ;; 直接对刚创建的圆实体标注，避免进入“选择圆弧或圆”的交互模式
+  (if r3_circle_ent
+    (command "dimdiameter" r3_circle_ent r3_dim_pt)
+    (princ "\n警告: 未找到R3圆实体，跳过直径标注。")
   )
-
-
+  
   ;;============切换到图纸布局=============
   (setup_layout_and_titleblock)
 
@@ -561,7 +546,12 @@
 ;;==========================================
 (defun setup_layout_and_titleblock ()
   ;; 切换到图纸空间
-  (setvar "tilemode" 0)
+  (if (vl-catch-all-error-p (vl-catch-all-apply 'setvar (list "tilemode" 0)))
+    (progn
+      (princ "\n警告: tilemode 切换失败，尝试使用 pspace。")
+      (command "pspace")
+    )
+  )
   
   ;; 检查布局"A4图纸"是否存在
   (if (layout_exists "A4图纸")
