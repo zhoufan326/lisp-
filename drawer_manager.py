@@ -128,18 +128,24 @@ class DrawerManager:
         
         args_map = {
             "c:xba": ["r0", "a0", "t0", "b0", lambda p: f'"{p.get("tool_type", "1")}"', 
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"'],
+                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
+                      lambda p: f'"{p.get("material_code", "")}"'],
             "c:xbt": ["r0", "a0", "t0", "b0", lambda p: f'"{p.get("tool_type", "1")}"', 
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"'],
-            "c:mja": ["r0", "a0", "t0"],
-            "c:mjt": ["r0", "a0", "t0"],
-            "c:dwa": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"'],
-            "c:dwt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"'],
+                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
+                      lambda p: f'"{p.get("material_code", "")}"'],
+            "c:mja": ["r0", "a0", "t0", lambda p: f'"{p.get("material_code", "")}"'],
+            "c:mjt": ["r0", "a0", "t0", lambda p: f'"{p.get("material_code", "")}"'],
+            "c:dwa": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"',
+                      lambda p: f'"{p.get("material_code", "")}"'],
+            "c:dwt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"',
+                      lambda p: f'"{p.get("material_code", "")}"'],
             "c:jzm": ["r0", "a0", "t0", lambda p: f'"{p.get("scale_str", "1:1")}"', 
                       lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"', 
-                      lambda p: p.get("slot_choice", "0")],
-            "c:xza": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"'],
-            "c:xzt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"']
+                      lambda p: p.get("slot_choice", "0"), lambda p: f'"{p.get("material_code", "")}"'],
+            "c:xza": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"',
+                      lambda p: f'"{p.get("material_code", "")}"'],
+            "c:xzt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"',
+                      lambda p: f'"{p.get("material_code", "")}"']
         }
         
         args = args_map.get(func_name, [])

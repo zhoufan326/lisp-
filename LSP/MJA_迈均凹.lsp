@@ -1,4 +1,4 @@
-(defun mja (r0 a0 t0 /
+(defun mja (r0 a0 t0 material_code /
                old_osmode old_cmdecho old_orthomode old_clayer old_attdia product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com) ; 加载ActiveX支持
@@ -36,8 +36,24 @@
 
 
   ;;=================工装类型选择===================
-  (princ "\n=== 迈均凹工装绘图程序 ===")
+   
 
+
+  (princ "\n=== 迈均凹工装绘图程序 ===")
+  ;; 获取物料编码
+  (princ "\n请输入物料编码: ")
+  (setq material_code (getstring T))
+  (if (or (null material_code) (= material_code "")) 
+    (progn 
+      (princ "\n物料编码不能为空，程序终止。")
+      ;; 恢复原始系统变量
+      (setvar "osmode" old_osmode)
+      (setvar "cmdecho" old_cmdecho)
+      (setvar "orthomode" old_orthomode)
+      (princ)
+      (exit)
+    )
+  )
   ;; 固定工装类型为抛光模基模
   (setq product_name "抛光模基模")
   (setq material "LY12")
@@ -607,3 +623,79 @@
   ;; 创建多行文字
   (command "mtext" text_corner1 text_corner2 tech_text "")
 )
+
+;;==========================================
+;; 自动保存和PDF打印函数
+;;==========================================
+(defun auto_save_and_print () 
+  ;; 确保在图纸空间
+  (command "pspace")
+
+  ;; 获取保存路径（优先使用Python传递的路径）
+  (setq base_dwg_path (getvar "SAVEFILEPATH"))
+  (setq base_pdf_path (getvar "SAVEFILEPATH"))
+  
+  ;; 如果没有传递路径，使用默认路径
+  (if (= base_dwg_path "")
+    (setq base_dwg_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\绘图文件")
+  )
+  (if (= base_pdf_path "")
+    (setq base_pdf_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\图纸")
+  )
+
+  ;; 创建保存路径
+  (setq dwg_save_path (strcat base_dwg_path "\\" material_code "\\" drawing_no 
+                              ".dwg"
+                      )
+  )
+  (setq pdf_save_path (strcat base_pdf_path "\\" material_code "\\" drawing_no 
+                              ".pdf"
+                      )
+  )
+
+  ;; 保存DWG文件
+  (princ (strcat "\n正在保存DWG文件到: " dwg_save_path))
+  (command "saveas" "" dwg_save_path)
+
+  ;; 等待保存完成
+  (while (> (getvar "CMDACTIVE") 0) 
+    (command "")
+  )
+
+  ;; 使用-plot命令进行批处理打印（使用默认打印机）
+  (command "-plot" "Y" ; 详细配置
+           "" ; 模型空间
+           "" ; 打印机（默认）
+           "" ; 纸张大小（默认）
+           "" ; 单位（默认）
+           "" ; 方向（默认）
+           "" ; 反向打印（默认）
+           "E" ; 打印范围（[显示(D)/范围(E)/布局(L)/视图(V)/窗口(W)]）
+           "" ; 输入窗口的左下角（默认）
+           "" ; 输入窗口的右上角（默认）
+           "" ; 比例（默认）
+           "" ; 居中（默认）
+           "" ; 打印线宽（默认）
+           "" ; 打印样式（默认）
+           "" ; 打印着色（默认）
+           "" ; 打印线宽（[是(Y)/否(N)]默认）
+           "" ; 缩放线宽（[是(Y)/否(N)]默认）
+           "" ; 先打印图纸空间（[是(Y)/否(N)]默认）
+           "" ; 隐藏图纸空间对象（[是(Y)/否(N)]默认）
+           pdf_save_path ; 输出文件路径
+           "" ; 确认打印
+           "Y" ; 保存更改（默认）
+           "N" ; 继续打印（默认）
+  )
+  (while (> (getvar "CMDACTIVE") 0) 
+    (command "")
+  )
+
+  (princ (strcat "\nPDF文件已保存到: " pdf_save_path))
+)
+
+
+  ;;==========================================
+ 
+
+(defun c:mja () (mja nil nil nil) (princ))
