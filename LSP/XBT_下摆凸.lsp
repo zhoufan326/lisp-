@@ -38,10 +38,9 @@
   
   
   ;;=================工装类型选择===================
-  (princ "\n=== 下摆凸工装绘图程序 ===")
-  
   (if (null tool_type)
     (progn
+      (princ "\n=== 下摆凸工装绘图程序 ===")
       (initget 1 "1 2")
       (setq tool_type (getkword "\n请选择工装类型: 1. 抛光模基模 2. 精磨模基模 "))
     )
@@ -69,14 +68,13 @@
   (princ (strcat "\n图号前缀: " drawing_prefix))
   
   ;;=================获取用户输入：使用函数获取用户输入的参数=========================
-  (princ "\n=== 下摆凸工装绘图程序 ===")
   (if (null r0) (setq r0 (getdist "\n请输入曲率半径: ")))
   (if (null a0) (setq a0 (getdist "\n请输入口径(直径): ")))
   (if (null t0) (setq t0 (getdist "\n请输入边厚: ")))
   (if (null b0) (setq b0 (getdist "\n请输入柄长: ")))
   
   ;; 验证输入参数的合理性
-  (if (or (null r0) (null a0) (null t0) (null b0) (<= r0 0) (<= a0 0) (<= t0 0) (<= b0 0))
+  (if (or (<= r0 0) (<= a0 0) (<= t0 0) (<= b0 0))
     (progn
       (princ "\n参数值必须大于0，程序终止。")
       ;; 恢复原始系统变量
@@ -105,20 +103,32 @@
     )
   )
   
-  ;; 询问技术要求选择
+  ;; 技术要求选择
   (if (null tech_choice)
     (progn
       (princ "\n=== 技术要求选择 ===")
       (princ "\n请选择1: 使用默认技术要求;2: 自定义技术要求:")
       (setq tech_choice (getint))
+      (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2))
+        (progn
+          (princ "\n输入无效，使用默认技术要求。")
+          (setq tech_choice 1)
+        )
+      )
     )
   )
-  (if (or (null tech_choice) (< tech_choice 1) (> tech_choice 2)) (setq tech_choice 1))
   
+  ;; 如果选择自定义技术要求，获取用户输入
   (if (and (= tech_choice 2) (null custom_tech_text))
     (progn
       (princ "\n请输入自定义技术要求内容: ")
       (setq custom_tech_text (getstring T))
+      (if (null custom_tech_text)
+        (progn
+          (princ "\n输入被取消，使用默认技术要求。")
+          (setq tech_choice 1)
+        )
+      )
     )
   )
   
@@ -408,20 +418,6 @@
     (command pause)
   )
   
-  ;; 仰视图其他标注
-  (setvar "clayer" "标注线")
-  
-  ;; 标注R3圆直径（半径3mm的圆）
-  (setq r3_radius 3)
-  ;; 标注位置：向左上方偏移0.5
-  (setq r3_dim_pt (list (- (car elevation_view_center) 0.5) 
-                        (+ (cadr elevation_view_center) r3_radius 0.5)))
-  (command "dimdiameter" (list elevation_view_center r3_radius) "t" "%%c<>" r3_dim_pt)
-  
-  ;; 如果命令仍在活动，等待用户完成选择
-  (while (> (getvar "CMDACTIVE") 0)
-    (command pause)
-  )
 
 
   ;;============切换到图纸布局=============
@@ -751,4 +747,7 @@
   (command "mtext" text_corner1 text_corner2 tech_text "")
 )
 
-(defun c:xbt () (xbt nil nil nil nil nil nil nil) (princ))
+;; 命令行包装函数，保持向后兼容性
+(defun c:xbt ()
+  (xbt nil nil nil nil nil nil nil)
+)

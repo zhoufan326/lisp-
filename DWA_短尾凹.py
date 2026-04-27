@@ -111,6 +111,7 @@ class DWA_短尾凹_UI:
             
             self.save_params()
             
-            self.on_execute("c:dwa", values)
+            # 调用核心绘图函数 dwa
+            self.on_execute("dwa", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

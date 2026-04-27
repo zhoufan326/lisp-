@@ -101,6 +101,8 @@ class DWT_短尾凸_UI:
                 return
             
             self.save_params()
-            self.on_execute("c:dwt", values)
+            
+            # 调用核心绘图函数 dwt
+            self.on_execute("dwt", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

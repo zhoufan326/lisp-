@@ -127,6 +127,7 @@ class XBT_下摆凸_UI:
             
             self.save_params()
             
-            self.on_execute("c:xbt", values)
+            # 直接调用核心绘图函数 xbt 而不是命令 c:xbt，因为需要传递参数
+            self.on_execute("xbt", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

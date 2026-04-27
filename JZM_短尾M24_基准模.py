@@ -134,6 +134,7 @@ class JZM_短尾M24_基准模_UI:
             
             self.save_params()
             
-            self.on_execute("c:JZM1", values)
+            # 调用核心绘图函数 JZM1
+            self.on_execute("JZM1", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

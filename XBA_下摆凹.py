@@ -81,7 +81,7 @@ class XBA_下摆凹_UI:
         
         t0_frame = ttk.Frame(param_frame)
         t0_frame.pack(fill=tk.X, pady=10)
-        ttk.Label(t0_frame, text="边厚(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
+        ttk.Label(t0_frame, text="平台宽度(t0):", width=15, font=f_norm).pack(side=tk.LEFT)
         t0_var = tk.StringVar()
         ttk.Entry(t0_frame, textvariable=t0_var, font=f_norm).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.inputs["t0"] = t0_var
@@ -127,6 +127,7 @@ class XBA_下摆凹_UI:
             
             self.save_params()
             
-            self.on_execute("c:xba", values)
+            # 直接调用核心绘图函数 xba 而不是命令 c:xba，因为需要传递参数
+            self.on_execute("xba", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

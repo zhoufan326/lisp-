@@ -5,11 +5,11 @@ import json
 import os
 
 TOOL_TYPES = [
-    ("1", "光凹模精加工"),
-    ("2", "光凸模及下料模"),
-    ("3", "切边模精细模"),
-    ("4", "切边模上料"),
-    ("5", "切边模切料")
+    ("1", "抛光模基模修盘"),
+    ("2", "抛光模修盘基模"),
+    ("3", "球面低抛细磨盘"),
+    ("4", "球面低抛粘盘"),
+    ("5", "球面低抛抛盘")
 ]
 
 class XZT_小锥度凸_UI:
@@ -101,6 +101,8 @@ class XZT_小锥度凸_UI:
                 return
             
             self.save_params()
-            self.on_execute("c:xzt", values)
+            
+            # 调用核心绘图函数 xzt
+            self.on_execute("xzt", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

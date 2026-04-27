@@ -87,6 +87,7 @@ class MJT_迈均凸_UI:
             
             self.save_params()
             
-            self.on_execute("c:mjt", values)
+            # 调用核心绘图函数 mjt
+            self.on_execute("mjt", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))

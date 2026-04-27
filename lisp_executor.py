@@ -26,15 +26,6 @@ def _ensure_document(acad):
     return doc
 
 
-def _wait_lisp_done(acad, max_wait=90):
-    """等待 LISP 命令执行完成，避免过早保存/打印。"""
-    start = time.time()
-    while time.time() - start < max_wait:
-        if is_ready(acad, 0.5):
-            return True
-        time.sleep(0.2)
-    return False
-
 def run_lisp(acad, func_name, args=None, is_param=True):
     acad = _ensure_acad(acad)
     doc = _ensure_document(acad)
@@ -54,9 +45,6 @@ def run_lisp(acad, func_name, args=None, is_param=True):
                 time.sleep(0.5)
                 doc.SendCommand(arg.strip('"') + "\n")
         
-        # 等待命令执行完成（仅执行，不负责保存/打印）
-        if not _wait_lisp_done(acad, max_wait=120):
-            print("警告: 绘图完成状态确认超时。")
         return True
     except Exception as e:
         print(f"执行LISP失败 {func_name}: {e}")

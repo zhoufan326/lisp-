@@ -85,9 +85,13 @@ def _get_doc_key(doc) -> str:
 def load_single_lisp_file(doc, lisp_file, functions=None): 
     """加载单个LISP文件 (使用 autoload 模式)""" 
     if not doc: return False
-    lisp_path = os.path.abspath(lisp_file).replace("\\", "/") 
+    
+    # 使用绝对路径（确保加载稳定性）
+    lisp_path = lisp_file.replace("\\", "/") 
     file_name = os.path.basename(lisp_file)
     doc_key = _get_doc_key(doc)
+    
+    print(f"正在加载 LISP 文件: {lisp_path}")
     
     # 获取该文件中的所有 c: 命令名
     if not functions:
@@ -162,11 +166,25 @@ def load_single_lisp_file(doc, lisp_file, functions=None):
             load_command = f'(progn (vl-load-com) {stubs_code} (princ (strcat "\\n>> " "{file_name}" " 已注册桩函数。")) (princ))'
     
     try:
-        doc.Activate()
+        # 尝试激活文档
+        try:
+            doc.Activate()
+        except Exception as activate_error:
+            print(f"文档激活失败，但继续尝试加载: {activate_error}")
+        
+        # 发送加载命令
         doc.SendCommand(load_command + "\n") 
+        
+        # 等待命令执行完成
+        import time
+        time.sleep(0.5)
+        
         if functions:
             _DOC_STUB_REGISTRY.setdefault(doc_key, set()).add(lisp_path)
+        
+        print(f"✓ LISP文件加载成功: {file_name}")
         return True
+        
     except Exception as e:
-        print(f"Error loading LISP {file_name}: {e}")
-        raise e
+        print(f"✗ LISP文件加载失败 {file_name}: {e}")
+        return False

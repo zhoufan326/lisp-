@@ -87,6 +87,7 @@ class MJA_迈均凹_UI:
             
             self.save_params()
             
-            self.on_execute("c:mja", values)
+            # 调用核心绘图函数 mja
+            self.on_execute("mja", values)
         except Exception as e:
             messagebox.showerror("错误", str(e))
