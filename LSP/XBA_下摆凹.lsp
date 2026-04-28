@@ -1,4 +1,4 @@
-(defun xba (r0 a0 t0 b0 tool_type tech_choice custom_tech_text material_code /
+(defun xba (r0 a0 t0 b0 tool_type tech_choice custom_tech_text save_path /
                old_osmode old_cmdecho old_orthomode old_clayer old_attdia old_dimtofl product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com) ; 加载ActiveX支持
@@ -752,6 +752,9 @@
 
   ;;添加技术要求
   (add_technical_requirements)
+  
+  ;;自动保存和打印
+  (auto_save_and_print save_path)
 )
 
 
@@ -880,13 +883,13 @@
 ;;==========================================
 ;; 自动保存和PDF打印函数
 ;;==========================================
-(defun auto_save_and_print () 
+(defun auto_save_and_print (save_path) 
   ;; 确保在图纸空间
   (command "pspace")
 
   ;; 获取保存路径（优先使用Python传递的路径）
-  (setq base_dwg_path (getvar "SAVEFILEPATH"))
-  (setq base_pdf_path (getvar "SAVEFILEPATH"))
+  (setq base_dwg_path (if (and save_path (/= save_path "")) save_path (getvar "SAVEFILEPATH")))
+  (setq base_pdf_path (if (and save_path (/= save_path "")) save_path (getvar "SAVEFILEPATH")))
   
   ;; 如果没有传递路径，使用默认路径
   (if (= base_dwg_path "")
@@ -897,11 +900,11 @@
   )
 
   ;; 创建保存路径
-  (setq dwg_save_path (strcat base_dwg_path "\\" material_code "\\" drawing_no 
+  (setq dwg_save_path (strcat base_dwg_path "\\" drawing_no 
                               ".dwg"
                       )
   )
-  (setq pdf_save_path (strcat base_pdf_path "\\" material_code "\\" drawing_no 
+  (setq pdf_save_path (strcat base_pdf_path "\\" drawing_no 
                               ".pdf"
                       )
   )
@@ -919,36 +922,7 @@
     (command "")
   )
 
-  ;; 使用-plot命令进行批处理打印（使用默认打印机）
-  (command "-plot" "Y" ; 详细配置
-           "" ; 模型空间
-           "" ; 打印机（默认）
-           "" ; 纸张大小（默认）
-           "" ; 单位（默认）
-           "" ; 方向（默认）
-           "" ; 反向打印（默认）
-           "E" ; 打印范围（[显示(D)/范围(E)/布局(L)/视图(V)/窗口(W)]）
-           "" ; 输入窗口的左下角（默认）
-           "" ; 输入窗口的右上角（默认）
-           "" ; 比例（默认）
-           "" ; 居中（默认）
-           "" ; 打印线宽（默认）
-           "" ; 打印样式（默认）
-           "" ; 打印着色（默认）
-           "" ; 打印线宽（[是(Y)/否(N)]默认）
-           "" ; 缩放线宽（[是(Y)/否(N)]默认）
-           "" ; 先打印图纸空间（[是(Y)/否(N)]默认）
-           "" ; 隐藏图纸空间对象（[是(Y)/否(N)]默认）
-           pdf_save_path ; 输出文件路径
-           "" ; 确认打印
-           "Y" ; 保存更改（默认）
-           "N" ; 继续打印（默认）
-  )
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command "")
-  )
 
-  (princ (strcat "\nPDF文件已保存到: " pdf_save_path))
 )
 
 
@@ -957,5 +931,5 @@
 
 ;; 命令行包装函数，保持向后兼容性
 (defun c:xba ()
-  (xba nil nil nil nil nil nil nil)
+  (xba nil nil nil nil nil nil nil nil)
 )

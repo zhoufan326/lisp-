@@ -15,7 +15,7 @@ except ImportError:
 
 
 # 全局变量用于记录最后保存位置
-last_save_directory = "P:工装绘图文件"
+last_save_directory = "P:\AutoLISP_工装绘图项目\工装绘图文件"
 
 
 def select_save_directory(parent: tk.Tk = None, material_code: str = None) -> Optional[str]:
@@ -27,14 +27,14 @@ def select_save_directory(parent: tk.Tk = None, material_code: str = None) -> Op
     
     # 如果有物料编码，自动创建文件夹
     if material_code and material_code.strip():
-        base_dir = "P:工装绘图文件"
+        base_dir = "P:\AutoLISP_工装绘图项目\工装绘图文件"
         material_dir = os.path.join(base_dir, material_code.strip())
         os.makedirs(material_dir, exist_ok=True)
         last_save_directory = material_dir
         return material_dir
     
     # 记录当前目录
-    initial_dir = last_save_directory if os.path.exists(last_save_directory) else "P:工装绘图文件"
+    initial_dir = last_save_directory if os.path.exists(last_save_directory) else "P:\AutoLISP_工装绘图项目\工装绘图文件"
     
     # 弹出目录选择对话框
     directory = filedialog.askdirectory(
@@ -48,6 +48,13 @@ def select_save_directory(parent: tk.Tk = None, material_code: str = None) -> Op
         return directory
     
     return None
+
+
+def get_save_path_for_material(material_code: str) -> str:
+    """获取物料编码对应的保存路径"""
+    if material_code and material_code.strip():
+        return os.path.join(last_save_directory, material_code.strip())
+    return last_save_directory
 
 
 def get_last_save_directory() -> str:
