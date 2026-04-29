@@ -1,4 +1,4 @@
-(defun xzt (r0 a0 t0 material_code /
+(defun xzt (r0 a0 t0 tool_type save_path /
                old_osmode old_cmdecho old_orthomode old_clayer old_attdia product_name material drawing_prefix)
   ;;===============定义程序名称和参数：使用defun函数定义程序，并声明局部变量===============
   (vl-load-com)  ; 加载ActiveX支持
@@ -117,7 +117,7 @@
   )
   
   ;; 自动生成完整图号（格式：前缀/Rr0-Φa0）
-  (setq drawing_no (strcat drawing_prefix "/R-" 
+  (setq drawing_no (strcat drawing_prefix "?R-" 
                            (rtos r0 2 4)     ; 曲率半径，最多显示四位小数
                            "-Φ" 
                            (rtos a0 2 2)))   ; 口径，最多显示两位小数
@@ -274,7 +274,7 @@
   (command "zoom" "all")
   
   ;;============切换到图纸布局=============
-  (setup_layout_and_titleblock)
+  (setup_layout_and_titleblock save_path)
 
   ;; 缩放至合适视图
   (command "zoom" "all")
@@ -330,7 +330,7 @@
 ;;==========================================
 ;; 设置布局和图框函数（使用现有布局和块）
 ;;==========================================
-(defun setup_layout_and_titleblock ()
+(defun setup_layout_and_titleblock (save_path)
   ;; 切换到图纸空间
   (setvar "tilemode" 0)
   
@@ -366,7 +366,7 @@
       )
       
       ;; 创建简单视口（固定比例1:1）
-      (create_simple_viewport)
+      (create_simple_viewport save_path)
     )
     (progn
       (princ "\n警告: 布局'A4图纸'不存在。")
@@ -379,7 +379,7 @@
 ;;==========================================
 ;; 创建简单视口（固定比例1:1）
 ;;==========================================
-(defun create_simple_viewport ()
+(defun create_simple_viewport (save_path)
   ;; 创建视口，然后设置比例为1:1
   ;; 使用标准视口位置和大小
   
@@ -413,6 +413,8 @@
   
   ;;添加技术要求
   (add_technical_requirements)
+  ;;自动保存和打印
+  (auto_save save_path)
 )
 
 
@@ -512,75 +514,34 @@
 
 
 ;;==========================================
-;; 自动保存和PDF打印函数
+;; 自动保存函数
 ;;==========================================
-(defun auto_save_and_print () 
+(defun auto_save (save_path)
   ;; 确保在图纸空间
   (command "pspace")
 
   ;; 获取保存路径（优先使用Python传递的路径）
-  (setq base_dwg_path (getvar "SAVEFILEPATH"))
-  (setq base_pdf_path (getvar "SAVEFILEPATH"))
-  
+  (setq base_dwg_path (if (and save_path (/= save_path "")) save_path (getvar "SAVEFILEPATH")))
+
   ;; 如果没有传递路径，使用默认路径
   (if (= base_dwg_path "")
     (setq base_dwg_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\绘图文件")
   )
-  (if (= base_pdf_path "")
-    (setq base_pdf_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\图纸")
-  )
 
   ;; 创建保存路径
-  (setq dwg_save_path (strcat base_dwg_path "\\" material_code "\\" drawing_no 
-                              ".dwg"
-                      )
-  )
-  (setq pdf_save_path (strcat base_pdf_path "\\" material_code "\\" drawing_no 
-                              ".pdf"
-                      )
-  )
+    ;; ??????????????????????????????
+  (setq safe_drawing_no (vl-string-subst "／" "/" drawing_no))
+  (setq safe_drawing_no (vl-string-subst "／" "\\" safe_drawing_no))
 
- 
+  (setq dwg_save_path (strcat base_dwg_path "/" safe_drawing_no ".dwg"))
 
   ;; 保存DWG文件
+  (setq old_expert (getvar "EXPERT"))
+  (setvar "EXPERT" 5) ; 静默覆盖现有文件
   (princ (strcat "\n正在保存DWG文件到: " dwg_save_path))
   (command "saveas" "" dwg_save_path)
-
-  ;; 等待保存完成
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command "")
-  )
-
-  ;; 使用-plot命令进行批处理打印（使用默认打印机）
-  (command "-plot" "Y" ; 详细配置
-           "" ; 模型空间
-           "" ; 打印机（默认）
-           "" ; 纸张大小（默认）
-           "" ; 单位（默认）
-           "" ; 方向（默认）
-           "" ; 反向打印（默认）
-           "E" ; 打印范围（[显示(D)/范围(E)/布局(L)/视图(V)/窗口(W)]）
-           "" ; 输入窗口的左下角（默认）
-           "" ; 输入窗口的右上角（默认）
-           "" ; 比例（默认）
-           "" ; 居中（默认）
-           "" ; 打印线宽（默认）
-           "" ; 打印样式（默认）
-           "" ; 打印着色（默认）
-           "" ; 打印线宽（[是(Y)/否(N)]默认）
-           "" ; 缩放线宽（[是(Y)/否(N)]默认）
-           "" ; 先打印图纸空间（[是(Y)/否(N)]默认）
-           "" ; 隐藏图纸空间对象（[是(Y)/否(N)]默认）
-           pdf_save_path ; 输出文件路径
-           "" ; 确认打印
-           "Y" ; 保存更改（默认）
-           "N" ; 继续打印（默认）
-  )
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command "")
-  )
-
-  (princ (strcat "\nPDF文件已保存到: " pdf_save_path))
+  (setvar "EXPERT" old_expert)
+  (setvar "USERS1" "SUCCESS") ; 设置成功标志位
 )
 
 

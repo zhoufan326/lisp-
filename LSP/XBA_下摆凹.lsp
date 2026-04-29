@@ -40,22 +40,6 @@
   ;;=================工装类型选择===================
    
 
-  ;; 获取物料编码
-  (princ "\n请输入物料编码: ")
-  (if (null material_code) 
-    (setq material_code (getstring T))
-  )
-  (if (or (null material_code) (= material_code "")) 
-    (progn 
-      (princ "\n物料编码不能为空，程序终止。")
-      ;; 恢复原始系统变量
-      (setvar "osmode" old_osmode)
-      (setvar "cmdecho" old_cmdecho)
-      (setvar "orthomode" old_orthomode)
-      (princ)
-      (exit)
-    )
-  )
   (if (null tool_type)
     (progn
       (princ "\n=== 下摆凹工装绘图程序 ===")
@@ -407,7 +391,7 @@
   )
 
   ;; 计算俯视图半径
-  (setq top_view_radius (+ (/ a0 2) t0))
+  (setq top_view_radius (+ (/ a0 2) 2))
 
   ;; 仰视图中心点：距离主视图最低点大于俯视图半径+5mm
   (setq elevation_view_center (list (car main_view_lowest_point) 
@@ -522,7 +506,7 @@
 
 
   ;;============切换到图纸布局=============
-  (setup_layout_and_titleblock)
+  (setup_layout_and_titleblock save_path)
 
   ;; 缩放至合适视图
   (command "zoom" "all")
@@ -562,91 +546,9 @@
 )
 
 ;;==========================================
-;; 设置图框属性值
-;;==========================================
-(defun set_attributes_of_titleblock () 
-  ;; 设置A4图框块的属性值
-
-  ;; 获取最后插入的块（图框）
-  (setq block_ent (entlast))
-
-  ;; 确保是插入的块
-  (if 
-    (and block_ent 
-         (= (cdr (assoc 0 (entget block_ent))) "INSERT")
-         (= (cdr (assoc 2 (entget block_ent))) "A4图框")
-    )
-    (progn 
-      ;; 遍历块的所有子实体，找到属性并设置值
-      (setq next_ent (entnext block_ent))
-      (while next_ent 
-        (setq ent_data (entget next_ent))
-
-        ;; 检查是否为属性定义
-        (if (= (cdr (assoc 0 ent_data)) "ATTRIB") 
-          (progn 
-            (setq tag_name (cdr (assoc 2 ent_data))) ; 属性标记
-
-            ;; 根据属性标记设置对应的值
-            (cond 
-              ((or (wcmatch tag_name "*名称*") 
-                   (wcmatch tag_name "*name*")
-               )
-               (setq new_value product_name)
-              )
-
-              ((or (wcmatch tag_name "*材料*") 
-                   (wcmatch tag_name "*material*")
-               )
-               (setq new_value material)
-              )
-
-              ((or (wcmatch tag_name "*图号*") 
-                   (wcmatch tag_name "*drawing*")
-               )
-               (setq new_value drawing_no)
-              )
-
-              ((or (wcmatch tag_name "*日期*") 
-                   (wcmatch tag_name "*date*")
-               )
-               (setq new_value current_date)
-              )
-
-              ((or (wcmatch tag_name "*比例*") 
-                   (wcmatch tag_name "*scale*")
-               )
-               (setq new_value scale_text)
-              )
-
-              (t
-               ;; 对于其他属性，保持默认值
-               (princ (strcat "\n保持属性默认值: " tag_name))
-               ;; 不修改该属性，保持原值
-              )
-            )
-
-            ;; 更新实体
-            (entupd next_ent)
-          )
-        )
-
-        (setq next_ent (entnext next_ent))
-      )
-
-      ;; 更新块引用
-      (entupd block_ent)
-
-      (princ "\n图框属性设置完成。")
-    )
-    (princ "\n警告: 未找到A4图框图块，无法设置属性。")
-  )
-)
-
-;;==========================================
 ;; 设置布局和图框函数（使用现有布局和块）
 ;;==========================================
-(defun setup_layout_and_titleblock () 
+(defun setup_layout_and_titleblock (save_path) 
   ;; 切换到图纸空间
   (setvar "tilemode" 0)
 
@@ -682,7 +584,7 @@
       )
 
       ;; 创建简单视口（固定比例1:1）
-      (create_simple_viewport)
+      (create_simple_viewport save_path)
     )
     (progn 
       (princ "\n警告: 布局'A4图纸'不存在。")
@@ -695,7 +597,7 @@
 ;;==========================================
 ;; 创建简单视口（固定比例1:1）
 ;;==========================================
-(defun create_simple_viewport () 
+(defun create_simple_viewport (save_path) 
   ;; 创建视口，然后设置比例为1:1
   ;; 使用标准视口位置和大小
 
@@ -754,7 +656,7 @@
   (add_technical_requirements)
   
   ;;自动保存和打印
-  (auto_save_and_print save_path)
+  (auto_save save_path)
 )
 
 
@@ -881,48 +783,33 @@
   (command "mtext" text_corner1 text_corner2 tech_text "")
 )
 ;;==========================================
-;; 自动保存和PDF打印函数
+;; 自动保存函数
 ;;==========================================
-(defun auto_save_and_print (save_path) 
+(defun auto_save (save_path)
   ;; 确保在图纸空间
   (command "pspace")
 
   ;; 获取保存路径（优先使用Python传递的路径）
   (setq base_dwg_path (if (and save_path (/= save_path "")) save_path (getvar "SAVEFILEPATH")))
-  (setq base_pdf_path (if (and save_path (/= save_path "")) save_path (getvar "SAVEFILEPATH")))
-  
+
   ;; 如果没有传递路径，使用默认路径
   (if (= base_dwg_path "")
     (setq base_dwg_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\绘图文件")
   )
-  (if (= base_pdf_path "")
-    (setq base_pdf_path "P:\\AutoLISP_工装绘图项目\\工装绘图文件\\图纸")
-  )
 
   ;; 创建保存路径
-  (setq dwg_save_path (strcat base_dwg_path "\\" drawing_no 
-                              ".dwg"
-                      )
-  )
-  (setq pdf_save_path (strcat base_pdf_path "\\" drawing_no 
-                              ".pdf"
-                      )
-  )
-
-  ;; 创建目录（如果不存在）
-  (create_directory (strcat base_dwg_path "\\" material_code))
-  (create_directory (strcat base_pdf_path "\\" material_code))
+  ;; 兜底：将图号中的路径分隔符替换为全角斜杠，避免被识别为子目录
+  (setq safe_drawing_no (vl-string-subst "／" "/" drawing_no))
+  (setq safe_drawing_no (vl-string-subst "／" "\\" safe_drawing_no))
+  (setq dwg_save_path (strcat base_dwg_path "/" safe_drawing_no ".dwg"))
 
   ;; 保存DWG文件
+  (setq old_expert (getvar "EXPERT"))
+  (setvar "EXPERT" 5) ; 静默覆盖现有文件
   (princ (strcat "\n正在保存DWG文件到: " dwg_save_path))
   (command "saveas" "" dwg_save_path)
-
-  ;; 等待保存完成
-  (while (> (getvar "CMDACTIVE") 0) 
-    (command "")
-  )
-
-
+  (setvar "EXPERT" old_expert)
+  (setvar "USERS1" "SUCCESS") ; 设置成功标志位
 )
 
 

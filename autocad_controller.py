@@ -15,7 +15,7 @@ try:
     from lisp_loader import LispParser, load_single_lisp_file
     from acad_doc_manager import find_autocad, apply_template, configure_print_settings
     from lisp_executor import run_lisp
-    from dwg_saver import select_save_directory, get_last_save_directory, set_last_save_directory, get_save_path_for_material
+    from dwg_saver import select_save_directory, get_last_save_directory, set_last_save_directory, set_material_code_provider
     from acad_plot_manager import plot_paper_space
     from filename import generate_filename
     from drawer_manager import DrawerManager
@@ -69,6 +69,9 @@ class App(tk.Tk):
         # 设置UI
         self._setup_ui()
         self._load(self.model.last_dir)
+        
+        # 注入物料编码供应器，使 dwg_saver 能直接从 UI 获取编码
+        set_material_code_provider(lambda: self.material_code_entry.get().strip() if hasattr(self, 'material_code_entry') else "")
     
     def _setup_ui(self):
         """设置用户界面"""
@@ -405,11 +408,10 @@ class App(tk.Tk):
                     # 设置AutoCAD系统变量保存路径
                     doc.SetVariable("SAVEFILEPATH", self.last_save_directory)
                     
-                    # 如果有物料编码，传递物料编码保存路径
+                    # 如果有物料编码，路径已在 Python 侧决策并创建
                     material_code = params.get("material_code", "")
                     if material_code:
-                        material_path = get_save_path_for_material(material_code)
-                        doc.SetVariable("MATERIALPATH", material_path)
+                        doc.SetVariable("MATERIALPATH", self.last_save_directory)
                 
                 run_lisp(self.acad, exec_name, args, True)
                 
@@ -491,6 +493,7 @@ class App(tk.Tk):
         
         # 记录保存位置
         self.last_save_directory = directory
+        set_last_save_directory(directory)
         
         def task():
             try:
@@ -498,14 +501,27 @@ class App(tk.Tk):
                     self.after(0, lambda: self.error_handler.show_warning("提醒", "请先在 CAD 中新建或打开图形。"))
                     return
                 
+                doc = self.acad.ActiveDocument
+
                 # 设置AutoCAD系统变量保存路径
-                self.acad.ActiveDocument.SetVariable("SAVEFILEPATH", directory)
+                doc.SetVariable("SAVEFILEPATH", directory)
+
+                # 直接使用 AutoCAD SaveAs
+                file_stem = None
+                if isinstance(self.last_save_meta, dict):
+                    file_stem = self.last_save_meta.get("name")
+
+                if not file_stem:
+                    current_name = os.path.splitext(os.path.basename(getattr(doc, "Name", "DRAWING.dwg")))[0]
+                    file_stem = current_name or "DRAWING"
+
+                # 兜底：避免文件名中出现路径分隔符
+                file_stem = str(file_stem).replace("/", "／").replace("\\", "／")
+                save_file = os.path.join(directory, f"{file_stem}.dwg")
+                doc.SaveAs(save_file)
                 
-                # 调用LISP中的自动保存函数
-                run_lisp(self.acad, "(auto_save_and_print)", [], False)
-                
-                self.after(0, lambda: self._update_status(f"已保存到: {directory}"))
-                self.after(0, lambda: self.error_handler.show_info("保存成功", f"DWG 已保存到:\n{directory}"))
+                self.after(0, lambda: self._update_status(f"已保存到: {save_file}"))
+                self.after(0, lambda: self.error_handler.show_info("保存成功", f"DWG 已保存到:\n{save_file}"))
                 self.after(500, self._on_check_file)
             except Exception as e:
                 self.after(0, lambda: self.error_handler.handle_exception(e, "保存文件"))
@@ -546,13 +562,14 @@ class App(tk.Tk):
     
     def _draw_tool(self, draw_func, status_text, success_msg):
         """通用绘图函数"""
+        params = self._get_draw_params()
+
         def task():
             try:
                 if not self._ensure_acad():
                     self.error_handler.show_warning("提醒", "无法连接 AutoCAD。")
                     return
-                
-                params = self._get_draw_params()
+
                 self.after(0, lambda: self._update_status(status_text))
                 
                 self.drawer.acad = self.acad
