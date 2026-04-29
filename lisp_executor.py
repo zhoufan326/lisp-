@@ -5,7 +5,7 @@ from acad_doc_manager import is_ready, force_cancel, find_autocad
 
 
 def _ensure_acad(acad):
-    """确保拿到可用的 AutoCAD 对象。"""
+    """确保拿到可用的 AutoCAD 对象，入参失效时重新获取"""
     if acad:
         try:
             acad.Visible = True
@@ -16,7 +16,7 @@ def _ensure_acad(acad):
 
 
 def _ensure_document(acad):
-    """确保有可执行的活动文档（全手动模式：不自动新建）。"""
+    """确保存在活动文档，全手动模式下由用户自行打开"""
     try:
         doc = acad.ActiveDocument
     except Exception:
@@ -26,68 +26,54 @@ def _ensure_document(acad):
     return doc
 
 
-def _wait_command_complete(acad, timeout=25, poll_interval=0.1):
-    """
-    等待 AutoCAD 命令执行完成。
-    """
+def _wait_command_complete(acad, doc, timeout=15, poll_interval=0.05):
+    """等待 AutoCAD 命令执行完成。LISP 函数通过 (setvar "USERS1" "SUCCESS") 报告完成。"""
     start = time.time()
-    saw_busy = False
-    
-    # 初始快速检查，如果命令太快，可能直接就 ready 了
-    time.sleep(0.2) 
-    
+
     while time.time() - start < timeout:
         try:
-            cmd_names = acad.GetVariable("CMDNAMES")
-            if cmd_names:
-                saw_busy = True
-            else:
-                # 如果曾经忙过现在闲了，或者等了 2 秒还没忙，就检查是否 ready
-                if saw_busy or (time.time() - start > 2.0):
-                    if is_ready(acad, 0.5):
-                        return True
+            # LISP 执行完毕后会设置 USERS1="SUCCESS"，检测到即可提前返回
+            if doc.GetVariable("USERS1") == "SUCCESS":
+                return True
+            # 命令行空闲时确认就绪状态
+            if not acad.GetVariable("CMDNAMES") and is_ready(acad, 0.3):
+                return True
         except Exception:
             pass
         time.sleep(poll_interval)
 
-    return is_ready(acad, 1.0)
+    return is_ready(acad, 0.3)
 
 
-def run_lisp(acad, func_name, args=None, is_param=True, wait_for_completion=True, timeout=25):
+def run_lisp(acad, func_name, args=None, is_param=True, wait_for_completion=True, timeout=15):
+    """执行 AutoCAD LISP 函数，并通过 USERS1 系统变量判断完成状态"""
     acad = _ensure_acad(acad)
     doc = _ensure_document(acad)
 
-    if not is_ready(acad, 5): force_cancel(acad)
-    
+    # 发送命令前确保 CAD 空闲，否则强制取消当前命令
+    if not is_ready(acad, 2):
+        force_cancel(acad)
+
     try:
         doc.Activate()
-        time.sleep(0.3)
-        
-        # 重置成功标志位
+        time.sleep(0.1)
+
+        # 清空 USERS1，供 LISP 函数后续回写完成状态
         doc.SendCommand('(setvar "USERS1" "")\n')
         doc.SendCommand("\n")
-        
+
         if is_param:
+            # 参数已拼接到函数调用中
             doc.SendCommand(f"({func_name}{' ' + ' '.join(args) if args else ''})\n")
         else:
+            # 交互模式：先发送函数名，再逐行传递参数
             doc.SendCommand(f"({func_name})\n")
             for arg in (args or []):
-                time.sleep(0.5)
+                time.sleep(0.3)
                 doc.SendCommand(arg.strip('"') + "\n")
 
         if wait_for_completion:
-            # 基础等待（等待命令行变闲）
-            completed = _wait_command_complete(acad, timeout=timeout)
-            
-            # 核心验证：检查 USERS1 是否为 SUCCESS
-            try:
-                lisp_status = doc.GetVariable("USERS1")
-                if lisp_status == "SUCCESS":
-                    return True
-            except Exception as e:
-                print(f"获取 LISP 状态失败: {e}")
-            
-            return completed
+            return _wait_command_complete(acad, doc, timeout=timeout)
 
         return True
     except Exception as e:
