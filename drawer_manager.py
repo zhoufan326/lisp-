@@ -52,14 +52,16 @@ class DrawerManager:
         b0: Literal[20, 25] = 25 if is_concave or -50 <= radius < 0 else 20
         xzt_lsp: Literal['XZT_小锥度凸.lsp', 'XZA_小锥度凹.lsp'] = "XZT_小锥度凸.lsp" if is_concave else "XZA_小锥度凹.lsp"
         xzt_func: Literal['xzt', 'xza'] = "xzt" if is_concave else "xza"
+        # 根据工装类型设置 t0: 凸(xzt)为2, 凹(xza)为3
+        xzt_t0 = 2 if is_concave else 3
 
         for step_name, lsp, func, step_params in [
-           # ("下摆-精磨模基模",     xb_file,   xb_func, {"r0": jm_r, "a0": jm_a, "b0": b0, "t0": 2, "tool_type":2, "save_path": save_path}),
-           # ("下摆-抛光模基模",    xb_file,   xb_func, {"r0": pg_r, "a0": pg_a, "b0": b0, "t0": 2, "tool_type":1, "save_path": save_path}),
+            ("下摆-精磨模基模",     xb_file,   xb_func, {"r0": jm_r, "a0": jm_a, "b0": b0, "t0": 2, "tool_type":2, "save_path": save_path}),
+            ("下摆-抛光模基模",    xb_file,   xb_func, {"r0": pg_r, "a0": pg_a, "b0": b0, "t0": 2, "tool_type":1, "save_path": save_path}),
            
-            ("下摆-JZM小锥度",     "JZM_锥度_基准模.lsp", "jzm2", {"r0": abs(radius), "a0": jz_a, "save_path": save_path}),
-            ("高速抛光模基模修盘",  xzt_lsp,    xzt_func, {"r0": pg_r, "a0": pg_a, "tool_type":1, "save_path": save_path}),
-            ("高速抛光模修盘基模",  xzt_lsp,    xzt_func, {"r0": gs_r, "a0": gs_a, "tool_type":2, "save_path": save_path}),
+            ("下摆-JZM小锥度",     "JZM_锥度_基准模.lsp", "jzm2", {"r0": abs(radius), "a0": jz_a, "t0": 3, "save_path": save_path}),
+            ("高速抛光模基模修盘",  xzt_lsp,    xzt_func, {"r0": pg_r, "a0": pg_a, "t0": xzt_t0, "tool_type":1, "save_path": save_path}),
+            ("高速抛光模修盘基模",  xzt_lsp,    xzt_func, {"r0": gs_r, "a0": gs_a, "t0": xzt_t0, "tool_type":2, "save_path": save_path}),
         ]:
             if not self._execute_lisp(step_name, lsp, func, step_params):
                 return False
@@ -95,16 +97,16 @@ class DrawerManager:
         jz_a = results["基准模改丸片口径"]
 
         is_concave = radius > 0
-        mj_file = "MJA_迈均凹.lsp" if is_concave else "MJT_迈均凸.lsp"
-        mj_func = "mja" if is_concave else "mjt"
+        mj_file: Literal['MJA_迈均凹.lsp', 'MJT_迈均凸.lsp'] = "MJA_迈均凹.lsp" if is_concave else "MJT_迈均凸.lsp"
+        mj_func: Literal['mja', 'mjt'] = "mja" if is_concave else "mjt"
         dw_file: Literal['DWT_短尾凸.lsp', 'DWA_短尾凹.lsp'] = "DWT_短尾凸.lsp" if is_concave else "DWA_短尾凹.lsp"
         dw_func: Literal['dwt', 'dwa'] = "dwt" if is_concave else "dwa"
 
         for step_name, lsp, func, step_params in [
-            ("迈均-基模",              mj_file,             mj_func, {"r0": jm_r, "a0": jm_a, "t0": 2, "save_path": save_path}),
-            ("迈均-JZM短尾M24",       "JZM_短尾M24_基准模.lsp", "jzm1",   {"r0": abs(radius), "a0": jz_a, "save_path": save_path}),
-            ("迈均-抛光模基模修盘",     dw_file,             dw_func, {"r0": pg_r, "a0": pg_a, "t0": 2, "tool_type": 1, "save_path": save_path}),
-            ("迈均-抛光模修盘基模",     dw_file,             dw_func, {"r0": gs_r, "a0": gs_a, "t0": 2, "tool_type": 2, "save_path": save_path}),
+            ("迈均-基模",              mj_file,             mj_func, {"r0": jm_r, "a0": jm_a, "t0": 8, "save_path": save_path}),
+            ("迈均-JZM短尾M24",       "JZM_短尾M24_基准模.lsp", "jzm1",   {"r0": abs(radius), "a0": jz_a, "t0": 8, "save_path": save_path}),
+            ("迈均-抛光模基模修盘",     dw_file,             dw_func, {"r0": pg_r, "a0": pg_a, "t0": 8, "tool_type": 1, "save_path": save_path}),
+            ("迈均-抛光模修盘基模",     dw_file,             dw_func, {"r0": gs_r, "a0": gs_a, "t0": 8, "tool_type": 2, "save_path": save_path}),
         ]:
             if not self._execute_lisp(step_name, lsp, func, step_params):
                 return False
@@ -114,83 +116,71 @@ class DrawerManager:
 
     def draw_di_pao(self, params=None):
         """绘制低抛套装"""
-        if params is None:
-            params = {}
-
-        save_path = self._resolve_save_path()
-        if not save_path:
-            return False
-
-        is_concave = params.get("type", "凹") == "凹"
-        dw_file = "DWA_短尾凹.lsp" if is_concave else "DWT_短尾凸.lsp"
-        dw_func = "dwa" if is_concave else "dwt"
-
-        if not self._execute_lisp("低抛", dw_file, dw_func, params):
-            return False
-
-        print(f"绘制低抛套装完成，参数: {params}")
-        return True
+      
 
     # ==================== 辅助函数 ====================
 
-    @retry_on_autocad_error(max_attempts=3, initial_delay=0.5)
     def _execute_lisp(self, step_name, lsp, func, params):
         """执行LISP步骤并处理结果"""
         try:
-            if not self.acad:
-                self.acad = find_autocad()
-                self.acad.Visible = True
-
-            try:
-                doc = apply_template(self.acad, self.template_path, None)
-            except Exception:
-                doc = self.acad.ActiveDocument
-            doc.Activate()
-
-            lsp_path = os.path.join(self.lsp_dir, lsp)
-            if os.path.exists(lsp_path):
-                load_single_lisp_file(doc, lsp_path, None)
-
-            args = self._build_args(func, params)
-
-            if run_lisp(self.acad, func, args, True):
-                print(f"✓ {step_name} 完成")
-                return True
+            self._execute_lisp_core(step_name, lsp, func, params)
+            print(f"✓ {step_name} 完成")
+            return True
         except Exception as e:
             print(f"❌ {step_name} 异常: {e}")
+            print(f"❌ {step_name} 失败")
+            return False
 
-        print(f"❌ {step_name} 失败")
-        return False
+    @retry_on_autocad_error(max_attempts=3, initial_delay=2)
+    def _execute_lisp_core(self, step_name, lsp, func, params):
+        """执行LISP核心逻辑（可重试）"""
+        if not self.acad:
+            self.acad = find_autocad()
+            self.acad.Visible = True
 
+        try:
+            doc = apply_template(self.acad, self.template_path, None)
+        except Exception:
+            doc = self.acad.ActiveDocument
+        doc.Activate()
+
+        lsp_path = os.path.join(self.lsp_dir, lsp)
+        if os.path.exists(lsp_path):
+            load_single_lisp_file(doc, lsp_path, None)
+
+        args = self._build_args(func, params)
+        if not run_lisp(self.acad, func, args, True):
+            raise RuntimeError
     def _build_args(self, func, params):
         """构建 LISP 函数参数"""
-        def abs_v(k):
-            default_value = 1 if k == "t0" else 0
-            return str(abs(float(params.get(k, default_value))))
+        def q(v):
+            return f'"{v}"'
+
+        r0 = str(abs(float(params["r0"])))
+        a0 = str(float(params["a0"]))
+        t0 = str(float(params["t0"]))
+        save_path = q(params["save_path"])
 
         args_map = {
-            "xba": ["r0", "a0", "t0", "b0", lambda p: f'"{p.get("tool_type", "1")}"',
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
-                      lambda p: f'"{p.get("save_path", "")}"'],
-            "xbt": ["r0", "a0", "t0", "b0", lambda p: f'"{p.get("tool_type", "1")}"',
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
-                      lambda p: f'"{p.get("save_path", "")}"'],
-            "mja": ["r0", "a0", "t0", lambda p: f'"{p.get("save_path", "")}"'],
-            "mjt": ["r0", "a0", "t0", lambda p: f'"{p.get("save_path", "")}"'],
-            "dwa": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"', lambda p: f'"{p.get("save_path", "")}"'],
-            "dwt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "2")}"', lambda p: f'"{p.get("save_path", "")}"'],
-            "jzm1": ["r0", "a0", "t0", lambda p: f'"{p.get("scale_str", "1:1")}"',
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
-                      lambda p: p.get("slot_choice", "0"), lambda p: f'"{p.get("save_path", "")}"'],
-            "jzm2": ["r0", "a0", "t0", lambda p: f'"{p.get("scale_str", "1:1")}"',
-                      lambda p: p.get("tech_choice", "1"), lambda p: f'"{p.get("custom_tech_text", "")}"',
-                      lambda p: p.get("slot_choice", "0"), lambda p: f'"{p.get("save_path", "")}"'],
-            "xza": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "1")}"', lambda p: f'"{p.get("save_path", "")}"'],
-            "xzt": ["r0", "a0", "t0", lambda p: f'"{p.get("tool_type", "2")}"', lambda p: f'"{p.get("save_path", "")}"'],
+            "xba": [r0, a0, t0, str(float(params.get("b0", 0))), q(params.get("tool_type", "1")),
+                    params.get("tech_choice", "1"), q(params.get("custom_tech_text", "")), save_path],
+            "xbt": [r0, a0, t0, str(float(params.get("b0", 0))), q(params.get("tool_type", "1")),
+                    params.get("tech_choice", "1"), q(params.get("custom_tech_text", "")), save_path],
+            "mja": [r0, a0, t0, save_path],
+            "mjt": [r0, a0, t0, save_path],
+            "dwa": [r0, a0, t0, q(params.get("tool_type", "1")), save_path],
+            "dwt": [r0, a0, t0, q(params.get("tool_type", "2")), save_path],
+            "jzm1": [r0, a0, t0, q(params.get("scale_str", "1:1")),
+                     params.get("tech_choice", "1"), q(params.get("custom_tech_text", "")),
+                     params.get("slot_choice", "0"), save_path],
+            "jzm2": [r0, a0, t0, q(params.get("scale_str", "1:1")),
+                     params.get("tech_choice", "1"), q(params.get("custom_tech_text", "")),
+                     params.get("slot_choice", "0"), save_path],
+            "xza": [r0, a0, t0, q(params.get("tool_type", "1")), save_path],
+            "xzt": [r0, a0, t0, q(params.get("tool_type", "2")), save_path],
         }
 
-        args = args_map.get(func, [])
-        return [abs_v(k) if isinstance(k, str) else k(params) for k in args]
+        return args_map.get(func, [])
 
     def _resolve_save_path(self):
         """获取保存路径"""

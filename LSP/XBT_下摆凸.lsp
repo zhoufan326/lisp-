@@ -339,7 +339,7 @@
                                      (- (/ (+ (cadr l_pt10) (cadr r_pt10)) 2) 11.5)))
   
   ;; 计算俯视图半径
-  (setq top_view_radius (+ (/ a0 2) t0))
+  (setq top_view_radius (/ a0 2) )
   
   ;; 仰视图中心点：距离主视图最低点大于俯视图半径+5mm
   (setq elevation_view_center (list (car main_view_lowest_point) 
@@ -377,11 +377,9 @@
   ;; 绘制弦下方的圆弧（从弦左端点到弦右端点）
   (command "arc" "c" elevation_view_center chord_start chord_end)
   
-  ;; 3. 半径(a0/2+t0-0.5)的圆
-  (setq circle_radius_3 (- top_view_radius 0.5))
-  (command "circle" elevation_view_center circle_radius_3)
+ 
   
-  ;; 4. 半径(a0/2+t0)的圆
+  ;; 3. 半径(a0/2+2)的圆
   (command "circle" elevation_view_center top_view_radius)
   
   ;; 绘制仰视图中心线

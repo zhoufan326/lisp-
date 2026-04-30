@@ -61,16 +61,21 @@ def configure_print_settings(doc):
         return False
 
 
+_DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "工装绘图文件")
+
+
 @retry_on_autocad_error(max_attempts=5, initial_delay=2)
-def plot_paper_space(doc, output_dir="P:\工装绘图文件", custom_filename=None):
+def plot_paper_space(doc, output_dir=None, custom_filename=None):
     """
     执行图纸空间打印。
     
     参数:
         doc: AutoCAD文档对象
-        output_dir: 输出目录，默认为 "P:\工装绘图文件"
+        output_dir: 输出目录，默认为项目下的 "工装绘图文件" 目录
         custom_filename: 自定义文件名（不含路径和扩展名），如果提供则使用此名称命名文件
     """
+    if output_dir is None:
+        output_dir = _DEFAULT_OUTPUT_DIR
     try:
         # 在输出目录下创建"图纸"子目录
         output_dir = os.path.join(output_dir, "图纸")

@@ -552,7 +552,7 @@
   )
 
   ;; 创建保存路径
-    ;; ??????????????????????????????
+
   (setq safe_drawing_no (vl-string-subst "／" "/" drawing_no))
   (setq safe_drawing_no (vl-string-subst "／" "\\" safe_drawing_no))
 
@@ -577,4 +577,4 @@
 
 
 
-(defun c:dwa () (dwa nil nil nil nil) (princ))
+(defun c:dwa () (dwa nil nil nil nil nil) (princ))

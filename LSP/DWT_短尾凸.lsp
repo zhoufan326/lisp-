@@ -535,4 +535,4 @@
   (setvar "EXPERT" old_expert)
   (setvar "USERS1" "SUCCESS") ; 设置成功标志位
 )
-(defun c:dwt () (dwt nil nil nil nil) (princ))
+(defun c:dwt () (dwt nil nil nil nil nil) (princ))

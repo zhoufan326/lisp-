@@ -121,7 +121,7 @@
   )
   
   ;; 自动生成完整图号（格式：前缀/Rr0-Φa0）
-  (setq drawing_no (strcat drawing_prefix "?R-" 
+  (setq drawing_no (strcat drawing_prefix "／R-" 
                            (rtos r0 2 4)     ; 曲率半径，最多显示四位小数
                            "-Φ" 
                            (rtos a0 2 2)))   ; 口径，最多显示两位小数
@@ -555,7 +555,7 @@
   )
 
   ;; 创建保存路径
-    ;; ??????????????????????????????
+  
   (setq safe_drawing_no (vl-string-subst "／" "/" drawing_no))
   (setq safe_drawing_no (vl-string-subst "／" "\\" safe_drawing_no))
 

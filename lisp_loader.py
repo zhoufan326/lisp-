@@ -166,18 +166,22 @@ def load_single_lisp_file(doc, lisp_file, functions=None):
             load_command = f'(progn (vl-load-com) {stubs_code} (princ (strcat "\\n>> " "{file_name}" " 已注册桩函数。")) (princ))'
     
     try:
-        # 尝试激活文档
-        try:
-            doc.Activate()
-        except Exception as activate_error:
-            print(f"文档激活失败，但继续尝试加载: {activate_error}")
-        
-        # 发送加载命令
-        doc.SendCommand(load_command + "\n") 
+        # 动态等待文档就绪并发送加载命令
+        import time
+        for attempt in range(10):
+            try:
+                doc.Activate()
+                doc.SendCommand(load_command + "\n")
+                break
+            except Exception as e:
+                error_msg = str(e)
+                if "-2147418111" in error_msg or "拒绝接收呼叫" in error_msg:
+                    time.sleep(1 + attempt * 0.5)
+                    continue
+                raise
         
         # 等待命令执行完成
-        import time
-        time.sleep(0.5)
+        time.sleep(2)
         
         if functions:
             _DOC_STUB_REGISTRY.setdefault(doc_key, set()).add(lisp_path)

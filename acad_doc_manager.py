@@ -20,15 +20,6 @@ def is_ready(acad, wait=2):
         time.sleep(0.1)
     return False
 
-def force_cancel(acad):
-    """尝试强制取消当前命令"""
-    for _ in range(2):
-        if is_ready(acad, 0.2): return True
-        try:
-            acad.ActiveDocument.SendCommand("\x03")
-            time.sleep(0.3)
-        except: pass
-    return is_ready(acad, 0.2)
 
 @retry_on_autocad_error(max_attempts=3, initial_delay=1)
 def find_autocad():

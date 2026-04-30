@@ -107,7 +107,7 @@
   )
   
   ;; 自动生成完整图号（格式：前缀/Rr0-Φa0）
-  (setq drawing_no (strcat drawing_prefix "?R-" 
+  (setq drawing_no (strcat drawing_prefix "／R-" 
                            (rtos r0 2 4)     ; 曲率半径，最多显示四位小数
                            "-Φ" 
                            (rtos a0 2 2)))   ; 口径，最多显示两位小数
@@ -563,6 +563,7 @@
   (cond
     ((= scale_str "1:1") (command "zoom" "1xp"))
     ((= scale_str "1:2") (command "zoom" "0.5xp"))
+    ((= scale_str "1:1.5") (command "zoom" "0.667xp"))
     ((= scale_str "2:1") (command "zoom" "2xp"))
     (T (command "zoom" "1xp"))  ; 默认1:1
   )
