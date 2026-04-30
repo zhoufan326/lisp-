@@ -280,7 +280,7 @@ class App(tk.Tk):
     
     def _load_custom_ui(self, name, rel_path):
         """加载自定义UI"""
-        self.current_ui = HAS_UI[name](self.param_frame, self._exec_custom, self.fs)
+        self.current_ui = HAS_UI[name](self.param_frame, None, self.fs)
         self.current_ui.create_ui(self.param_frame)
         
         self.param_manager.load_params(self.current_ui)
@@ -386,55 +386,8 @@ class App(tk.Tk):
         self._run_async(task, f"正在执行: {func.name}...")
     
     def _exec_custom(self, func_name, params):
-        """执行自定义命令"""
-        def task():
-            try:
-                if not self._ensure_acad():
-                    return
-                
-                doc = getattr(self.acad, "ActiveDocument", None)
-                if not doc:
-                    self.after(0, lambda: self.error_handler.show_warning("提醒", "请先在 CAD 中新建或打开图形，再执行。"))
-                    return
-                
-                clean_name = func_name.lower().replace("c:", "")
-                args = self._build_args(clean_name, params)
-                fname = self._get_fname(clean_name, params)
-                self._remember_save_meta(clean_name, params, fname)
-                exec_name = clean_name if func_name.lower().startswith("c:") else func_name
-                
-                # 将保存路径传递给LISP
-                if self.last_save_directory:
-                    # 设置AutoCAD系统变量保存路径
-                    doc.SetVariable("SAVEFILEPATH", self.last_save_directory)
-                    
-                    # 如果有物料编码，路径已在 Python 侧决策并创建
-                    material_code = params.get("material_code", "")
-                    if material_code:
-                        doc.SetVariable("MATERIALPATH", self.last_save_directory)
-                
-                run_lisp(self.acad, exec_name, args, True)
-                
-                self.after(0, lambda: self._update_status(f"执行完成: {exec_name}"))
-            except Exception as e:
-                self.after(0, lambda: self.error_handler.handle_exception(e, f"执行 {func_name}"))
-        
-        self._run_async(task, f"正在执行: {func_name}...")
-    
-    def _build_args(self, name, params):
-        """构建命令参数"""
-        def abs_val(key): return str(abs(float(params.get(key, 0))))
-        def str_val(key, default=""): return f'"{params.get(key, default)}"'
-        def num_val(key, default=0): return str(params.get(key, default))
-        
-        args_map = {
-            ("dwa", "dwt", "xza", "xzt"): [abs_val("r0"), abs_val("a0"), abs_val("t0"), str_val("tool_type", "1"), str_val("material_code")],
-            ("jzm1", "jzm2"): [abs_val("r0"), abs_val("a0"), abs_val("t0"), str_val("scale_str", "1:1"), num_val("tech_choice", "1"), str_val("custom_tech_text"), num_val("slot_choice", "0"), str_val("material_code")],
-            ("xba", "xbt"): [abs_val("r0"), abs_val("a0"), abs_val("t0"), abs_val("b0"), str_val("tool_type", "1"), num_val("tech_choice", "1"), str_val("custom_tech_text"), str_val("material_code")],
-            ("mja", "mjt"): [abs_val("r0"), abs_val("a0"), abs_val("t0"), str_val("material_code")]
-        }
-        
-        return next(([abs_val(k) if isinstance(k, str) else k(params) for k in args] for keys, args in args_map.items() if name in keys), [])
+        """执行自定义命令（已弃用 - UI组件直接调用 execute_lisp）"""
+        pass
     
     def _get_fname(self, name, params):
         """生成文件名"""

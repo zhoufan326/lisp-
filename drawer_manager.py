@@ -3,11 +3,8 @@
 """套装绘制管理器"""
 import os
 from typing import Literal
-from acad_doc_manager import find_autocad, apply_template
-from lisp_loader import load_single_lisp_file
-from lisp_executor import run_lisp
+from lisp_executor import execute_lisp
 from Tool_calculation import SwingMachineToolingCalculator
-from retry_decorator import retry_on_autocad_error
 from dwg_saver import select_save_directory
 
 class DrawerManager:
@@ -63,7 +60,7 @@ class DrawerManager:
             ("高速抛光模基模修盘",  xzt_lsp,    xzt_func, {"r0": pg_r, "a0": pg_a, "t0": xzt_t0, "tool_type":1, "save_path": save_path}),
             ("高速抛光模修盘基模",  xzt_lsp,    xzt_func, {"r0": gs_r, "a0": gs_a, "t0": xzt_t0, "tool_type":2, "save_path": save_path}),
         ]:
-            if not self._execute_lisp(step_name, lsp, func, step_params):
+            if not execute_lisp(self.acad, step_name, lsp, func, step_params, self._build_args, self.template_path, self.lsp_dir):
                 return False
 
         print(f"绘制下摆套装完成，参数: {params}")
@@ -108,7 +105,7 @@ class DrawerManager:
             ("迈均-抛光模基模修盘",     dw_file,             dw_func, {"r0": pg_r, "a0": pg_a, "t0": 8, "tool_type": 1, "save_path": save_path}),
             ("迈均-抛光模修盘基模",     dw_file,             dw_func, {"r0": gs_r, "a0": gs_a, "t0": 8, "tool_type": 2, "save_path": save_path}),
         ]:
-            if not self._execute_lisp(step_name, lsp, func, step_params):
+            if not execute_lisp(self.acad, step_name, lsp, func, step_params, self._build_args, self.template_path, self.lsp_dir):
                 return False
 
         print(f"绘制迈均套装完成，参数: {params}")
@@ -120,37 +117,6 @@ class DrawerManager:
 
     # ==================== 辅助函数 ====================
 
-    def _execute_lisp(self, step_name, lsp, func, params):
-        """执行LISP步骤并处理结果"""
-        try:
-            self._execute_lisp_core(step_name, lsp, func, params)
-            print(f"✓ {step_name} 完成")
-            return True
-        except Exception as e:
-            print(f"❌ {step_name} 异常: {e}")
-            print(f"❌ {step_name} 失败")
-            return False
-
-    @retry_on_autocad_error(max_attempts=3, initial_delay=2)
-    def _execute_lisp_core(self, step_name, lsp, func, params):
-        """执行LISP核心逻辑（可重试）"""
-        if not self.acad:
-            self.acad = find_autocad()
-            self.acad.Visible = True
-
-        try:
-            doc = apply_template(self.acad, self.template_path, None)
-        except Exception:
-            doc = self.acad.ActiveDocument
-        doc.Activate()
-
-        lsp_path = os.path.join(self.lsp_dir, lsp)
-        if os.path.exists(lsp_path):
-            load_single_lisp_file(doc, lsp_path, None)
-
-        args = self._build_args(func, params)
-        if not run_lisp(self.acad, func, args, True):
-            raise RuntimeError
     def _build_args(self, func, params):
         """构建 LISP 函数参数"""
         def q(v):

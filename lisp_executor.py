@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import time
-from acad_doc_manager import is_ready, find_autocad
+from acad_doc_manager import is_ready, find_autocad, apply_template
+from lisp_loader import load_single_lisp_file
+from retry_decorator import retry_on_autocad_error
 
 
 def _ensure_acad(acad):
@@ -95,3 +98,37 @@ def run_lisp(acad, func_name, args=None, is_param=True, wait_for_completion=True
     except Exception as e:
         print(f"执行LISP失败 {func_name}: {e}")
         raise
+
+
+def execute_lisp(acad, step_name, lsp, func, params, build_args, template_path, lsp_dir):
+    """执行LISP步骤并处理结果（外部调用入口，返回 True/False）"""
+    try:
+        _execute_with_retry(acad, step_name, lsp, func, params, build_args, template_path, lsp_dir)
+        print(f"✓ {step_name} 完成")
+        return True
+    except Exception as e:
+        print(f"❌ {step_name} 异常: {e}")
+        print(f"❌ {step_name} 失败")
+        return False
+
+
+@retry_on_autocad_error(max_attempts=3, initial_delay=2)
+def _execute_with_retry(acad, step_name, lsp, func, params, build_args, template_path, lsp_dir):
+    """执行LISP核心逻辑（可重试）"""
+    if not acad:
+        acad = find_autocad()
+        acad.Visible = True
+
+    try:
+        doc = apply_template(acad, template_path, None)
+    except Exception:
+        doc = acad.ActiveDocument
+    doc.Activate()
+
+    lsp_path = os.path.join(lsp_dir, lsp)
+    if os.path.exists(lsp_path):
+        load_single_lisp_file(doc, lsp_path, None)
+
+    args = build_args(func, params)
+    if not run_lisp(acad, func, args, True):
+        raise RuntimeError(f"{step_name} 执行失败")
