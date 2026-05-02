@@ -35,7 +35,7 @@ echo ==========================================
 echo.
 
 REM 运行脚本
-cd /d "P:\AutoLISP_工装绘图项目"
+cd /d "%~dp0"
 python autocad_controller.py
 
 echo.

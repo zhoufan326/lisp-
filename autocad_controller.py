@@ -35,7 +35,7 @@ CONFIG = {
     "UI_NAMES": ["DWA_短尾凹", "DWT_短尾凸", "JZM_短尾M24_基准模", "JZM_锥度_基准模", "XBA_下摆凹", "XBT_下摆凸", "MJA_迈均凹", "MJT_迈均凸", "XZA_小锥度凹", "XZT_小锥度凸"],
     "TEMPLATE_FILE": os.path.join("LSP", "LISP图样.dwt"),
     "OUTPUT_DIR": "工装绘图文件",
-    "CHECK_DIR": "P:\工装绘图文件"
+    "CHECK_DIR": os.path.join(os.path.dirname(os.path.abspath(__file__)), "工装绘图文件")
 }
 
 # 动态加载UI模块
@@ -94,7 +94,7 @@ class App(tk.Tk):
         ]
         
         for text, cmd in buttons:
-            ttk.Button(left_frame, text=text, command=cmd, width=8).pack(side=tk.LEFT, padx=2)
+            ttk.Button(left_frame, text=text, command=cmd, width=10).pack(side=tk.LEFT, padx=2)
         
         # 右侧参数和按钮
         right_frame = ttk.Frame(toolbar)

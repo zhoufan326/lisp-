@@ -8,7 +8,7 @@ from tkinter import filedialog
 from typing import Optional
 
 
-BASE_SAVE_DIR = r"P:\AutoLISP_工装绘图项目\工装绘图文件"
+BASE_SAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "工装绘图文件")
 
 # 全局变量：记录最后一次确定的保存目录
 last_save_directory = BASE_SAVE_DIR
